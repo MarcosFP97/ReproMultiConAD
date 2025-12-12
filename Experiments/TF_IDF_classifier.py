@@ -6,41 +6,43 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support # añadimos las ultimas dos para guardar datos en un excel
 import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_language', required=True)
 parser.add_argument('--task', required=True)
-parser.add_argument('--translated', required=True) # use "yes", if you want to the analysis using the English translated data 
+parser.add_argument('--translated', required=True) # use "yes", if you want to the analysis using the English translated data
 
 args_slurm = parser.parse_args()
 
-path_to_data_folder = "path_to_data_folder"
-train_en = pd.read_json(path_to_data_folder + "/train_en_AD_Dem_info.jsonl", lines=True)
-test_en = pd.read_json(path_to_data_folder + "/test_en_AD_Dem_info.jsonl", lines=True)
-train_spa = pd.read_json(path_to_data_folder + "/translated_train_df_spa.jsonl", lines=True)
-train_gr = pd.read_json(path_to_data_folder+"/translated_train_gr.jsonl", lines=True)
-train_cha = pd.read_json(path_to_data_folder + "/translated_train_cha.jsonl", lines=True)
-test_spa=pd.read_json(path_to_data_folder + "/translated_test_df_spa.jsonl", lines=True)
-test_gr= pd.read_json(path_to_data_folder + "/translated_test_gr.jsonl", lines=True)
-test_cha= pd.read_json(path_to_data_folder + "/translated_test_cha.jsonl", lines=True)
+path_to_data_folder = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/"
+train_en = pd.read_json(path_to_data_folder + "/train_english.jsonl", lines=True)
+test_en = pd.read_json(path_to_data_folder + "/test_english.jsonl", lines=True)
+
+#----------------------------------- de momento estos no -----------------------------------------
+#train_spa = pd.read_json(path_to_data_folder + "/translated_train_df_spa.jsonl", lines=True)
+#train_gr = pd.read_json(path_to_data_folder+"/translated_train_gr.jsonl", lines=True)
+#train_cha = pd.read_json(path_to_data_folder + "/translated_train_cha.jsonl", lines=True)
+#test_spa=pd.read_json(path_to_data_folder + "/translated_test_df_spa.jsonl", lines=True)
+#test_gr= pd.read_json(path_to_data_folder + "/translated_test_gr.jsonl", lines=True)
+#test_cha= pd.read_json(path_to_data_folder + "/translated_test_cha.jsonl", lines=True)
+#------------------------------------------------------------------------------------------------
 
 # Multi-lingual training and testing
-train_dfs = [train_en, train_gr, train_cha, train_spa]
-test_dfs = {
-    'en': test_en,
-    'gr': test_gr,
-    'cha': test_cha,
-    'spa': test_spa
-}
+#train_dfs = [train_en, train_gr, train_cha, train_spa]
+#test_dfs = {
+#    'en': test_en,
+#    'gr': test_gr,
+#    'cha': test_cha,
+#    'spa': test_spa
+#}
 
-# Mono-lingual training and testing
-train_dfs = [train_spa]
+# Mono-lingual training and testing => AHORA SOLO INGLÉS
+train_dfs = [train_en]
 test_dfs = {
-    'spa': test_spa
+    'en': test_en
 }
-
 
 
 
@@ -51,6 +53,7 @@ if args_slurm.translated== "yes":
     test_en['translated'] = test_en['Text_interviewer_participant']
 
 def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_state=42,task=None,translated=None):
+
     train_combined = pd.concat(train_dfs, ignore_index=True)
     if any(df.equals(train_en) for df in train_dfs):
         train_combined['Diagnosis'] = train_combined['Diagnosis'].replace('AD', 'Dementia')
@@ -63,25 +66,27 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     else:
         X_train = train_combined['Text_interviewer_participant']
     y_train = train_combined['Diagnosis']
-    
+
     tfidf = TfidfVectorizer()
     X_train_tfidf = tfidf.fit_transform(X_train)
-    
+
     test_df = test_dfs[test_language]
     if any(df.equals(train_en) for df in train_dfs):
          test_df['Diagnosis'] = test_df['Diagnosis'].replace('AD', 'Dementia')
     if task == "binary":
         test_df = test_df[test_df['Diagnosis'] != 'MCI']
-    
+
     if translated == "yes":
         X_test = test_df['translated']
     else:
         X_test = test_df['Text_interviewer_participant']
-    
+
     y_test = test_df['Diagnosis']
-    
+
     X_test_tfidf = tfidf.transform(X_test)
-    
+
+    results = [] # para guardar los resultados en un excel
+
     classifiers = {
         'Decision Tree': (DecisionTreeClassifier(random_state=random_state), {'max_depth': [10, 20, 30]}),
         'Random Forest': (RandomForestClassifier(random_state=random_state), {'n_estimators': [50, 100, 200]}),
@@ -89,18 +94,65 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         'SVM': (SVC(random_state=random_state), {'C': [0.1, 1, 10], 'kernel': ['linear', 'rbf']}),
         'Logistic Regression': (LogisticRegression(random_state=random_state), {'C': [0.1, 1, 10]})
     }
-    
+
     for name, (clf, params) in classifiers.items():
         grid_search = GridSearchCV(clf, params, cv=5, scoring='accuracy')
         grid_search.fit(X_train_tfidf, y_train)
-        
+
         y_pred = grid_search.predict(X_test_tfidf)
-        
+
+        # -------------- GUARDAMOS DATOS ----------------
+        report = classification_report(y_test, y_pred, output_dict=True)
+
+        results.append({
+            "Classifier": name,
+            "Best Params": grid_search.best_params_,
+
+            # Accuracy general
+            "Accuracy": report["accuracy"],
+
+            # ---- Métricas Dementia ----
+            "Dementia_precision": report["Dementia"]["precision"],
+            "Dementia_recall": report["Dementia"]["recall"],
+            "Dementia_f1": report["Dementia"]["f1-score"],
+            "Dementia_support": report["Dementia"]["support"],
+
+            # ---- Métricas HC ----
+            "HC_precision": report["HC"]["precision"],
+            "HC_recall": report["HC"]["recall"],
+            "HC_f1": report["HC"]["f1-score"],
+            "HC_support": report["HC"]["support"],
+
+            # ---- Macro avg ----
+            "Macro_precision": report["macro avg"]["precision"],
+            "Macro_recall": report["macro avg"]["recall"],
+            "Macro_f1": report["macro avg"]["f1-score"],
+
+            # ---- Weighted avg ----
+            "Weighted_precision": report["weighted avg"]["precision"],
+            "Weighted_recall": report["weighted avg"]["recall"],
+            "Weighted_f1": report["weighted avg"]["f1-score"],
+
+            "Test Language": test_language,
+            "Task": task,
+            "Translated": translated
+        })
+        # ----------------------------------------------
+
         print(f"Classifier: {name}")
         print(f"Best Parameters: {grid_search.best_params_}")
         print(f"Test Set Language: {test_language}")
         print(classification_report(y_test, y_pred))
         print("\n")
+
+    # ------------------ GUARDAMOS DATOS ------------------
+    results_path = "/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_results.xlsx"
+
+    results_df = pd.DataFrame(results)
+    results_df.to_excel(results_path, index=False)
+    print(f"Resultados guardados en: {results_path}")
+    # -----------------------------------------------------
+
     print("test dataset: ", test_language)
     for df in train_dfs:
         df_name = [name for name, value in globals().items() if value is df][0]

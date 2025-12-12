@@ -90,7 +90,7 @@ class ASRCollection(Collection):
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
 
-path_to_ASR_files = "data/ASR_data/ASR_data.jsonl"
+path_to_ASR_files = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_train_transcrpt.json"
 
 
 
@@ -98,10 +98,11 @@ if __name__ == '__main__':
     collection = ASRCollection(path_to_ASR_files)
     # Making the file name for the output file
     last_words = path_to_ASR_files.split('/')[-3:]
-    output_file_name = f"{last_words[0]}_{last_words[1]}_{last_words[2]}_output.jsonl"
+    output_file_name = f"taukadial_English_train.jsonl"
     
     # Writing the normalized data to the output file
-    output_file_path = os.path.join("jsonl_files", output_file_name)
+    output_file_path = os.path.join("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl", output_file_name)
+
     with open(output_file_path, "w", encoding="utf-8") as outfile:
         for raw_datapoint in collection:
             normalized_datapoint = collection.normalize_datapoint(raw_datapoint)

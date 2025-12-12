@@ -7,19 +7,23 @@ from dataclasses import asdict
 
 
 class CHACollection(Collection):
+    
     def __iter__(self) -> Iterator[RawDataPoint]:
         """
-        Iterate through all .cha files in the specified path and yield raw data points.
+        Recursively iterate through all .cha files in the path and its subdirectories.
         """
-        for filename in os.listdir(self.path):
-            if filename.endswith(".cha"):
-                file_path = os.path.join(self.path, filename)
-                if self.language == "english" or self.language == "chinese":
-                    yield from self.parse_cha_file(file_path, self._parse_line_english_chinese)
-                elif self.language == "spanish":
-                    yield from self.parse_cha_file(file_path, self._parse_line_spanish)
-                else:
-                    raise ValueError(f"Unsupported language: {self.language}")
+        for root, _, files in os.walk(self.path): # ITERAR RECURSIVAMENTE
+            for filename in files: # ITERAR RECURSIVAMENTE
+                if filename.endswith(".cha"):
+                    file_path = os.path.join(root, filename)
+
+                    if self.language in ["english", "chinese"]:
+                        yield from self.parse_cha_file(file_path, self._parse_line_english_chinese)
+                    elif self.language == "spanish":
+                        yield from self.parse_cha_file(file_path, self._parse_line_spanish)
+                    else:
+                        raise ValueError(f"Unsupported language: {self.language}")
+
 
     def parse_cha_file(self, file_path: str, parse_line_func: Callable[[dict, str], None]) -> Iterator[RawDataPoint]:
         """
@@ -116,7 +120,6 @@ class CHACollection(Collection):
             info["text_interviewer"].append(interviewer_text)
             info["text_interviewer_participant"].append("INT: "+interviewer_text)
             
-
     def _parse_line_spanish(self, info: dict, line: str,file_path: str):
         """
         Language-specific line parser for Spanish.
@@ -181,10 +184,6 @@ class CHACollection(Collection):
                  info["text_interviewer"].append(interviewer_text)
                  info["text_interviewer_participant"].append(interviewer_text)
 
-        
-
-
-
     def normalize_datapoint(self, raw_datapoint: RawDataPoint) -> NormalizedDataPoint:
         """
         Normalize a raw data point into a standardized format.
@@ -218,31 +217,31 @@ class CHACollection(Collection):
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
         
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Kempler" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Lu" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/PerLA" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files
+path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files #TODO Añadir el diagnóstico a partir del Excel, 3ª hoja última columna
 
-
-
-
-
-  
-
-
-
-
-path_to_cha_files =  "path_to_cha_files" # path to the folder containing .cha files
-
-
-
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Taukadial" # path to the folder containing .cha files #TODO Ver cómo formatear este dataset : Audio transcription -> Unir datos de la transcripción y del .csv
 
 if __name__ == '__main__':
-    collection = CHACollection(path_to_cha_files,language="chinese")
+    collection = CHACollection(path_to_cha_files,language="english")
     #collection = CHACollection(path_to_cha_files,language="spanish")
-    #collection = CHACollection(path_to_cha_files,language="english")
+    
+    #collection = CHACollection(path_to_cha_files,language="chinese") #NOTE De momento no usamos el chino para nuestro experimento    
+    
     # Making the file name for the output file
+    output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
     last_words= path_to_cha_files.split('/')[-3:]
-    output_file_name= f"{last_words[0]}_{last_words[1]}_{last_words[2]}_output.jsonl"
+    output_file_name= f"{last_words[2]}.jsonl"
     
     # Writing the normalized data to the output file
-    output_file_path = os.path.join("jsonl_files", output_file_name)
+    output_file_path = os.path.join(output_directory, output_file_name)
     with open(output_file_path, "w",encoding="utf-8") as outfile:
         for normalized_datapoint in collection.get_normalized_data():
             normalized_dict = asdict(normalized_datapoint)

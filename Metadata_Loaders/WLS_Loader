@@ -1,0 +1,54 @@
+import pandas as pd
+import json
+import os
+from base_loader import BaseMetadataLoader
+
+
+class WLSLoader(BaseMetadataLoader):
+
+    def __init__(self, excel_path):
+        self.excel_path = excel_path
+
+    def load_metadata(self):
+        # --- Load sheet 1 (age, gender) ---
+        df1 = pd.read_excel(self.excel_path, sheet_name=0)
+        df1 = df1.rename(columns=str.lower)
+
+        # Expected columns: idtlkbnk, age2011, sex
+        df1 = df1[['idtlkbnk', 'age2011', 'sex']]
+
+        # Map numeric sex values
+        sex_map = {1: "Male", 2: "Female"}
+        df1['sex'] = df1['sex'].map(sex_map)
+
+        # --- Load sheet 3 (diagnosis from screening threshold) ---
+        df3 = pd.read_excel(self.excel_path, sheet_name=2)
+        df3 = df3.rename(columns=str.lower)
+
+        # Expected column: screeningresult with values N/Y
+        df3 = df3[['idtlkbnk', 'screeningresult']]
+
+        diagnosis_map = {
+            'N': 'HC',        # Healthy control
+            'Y': 'Dementia'   # Cognitive impairment confirmed
+        }
+        df3['screeningresult'] = df3['screeningresult'].map(diagnosis_map)
+
+        # --- Merge metadata ---
+        df = pd.merge(df1, df3, on='idtlkbnk', how='left')
+
+        # Build metadata dictionary
+        metadata = {}
+
+        for _, row in df.iterrows():
+            file_id = str(row['idtlkbnk']).strip()
+
+            metadata[file_id] = {
+                "Age": row.get("age2011", "Unknown"),
+                "Gender": row.get("sex", "Unknown"),
+                "Diagnosis": row.get("screeningresult", "Unknown"),
+                "Continent": "North America",
+                "Countries": "United States",
+            }
+
+        return metadata
