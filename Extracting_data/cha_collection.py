@@ -1,6 +1,6 @@
 import os
 from typing import Iterator, Callable
-from collection import Collection, RawDataPoint, NormalizedDataPoint
+from .collection import Collection, RawDataPoint, NormalizedDataPoint
 import csv
 import json
 from dataclasses import asdict
@@ -23,7 +23,6 @@ class CHACollection(Collection):
                         yield from self.parse_cha_file(file_path, self._parse_line_spanish)
                     else:
                         raise ValueError(f"Unsupported language: {self.language}")
-
 
     def parse_cha_file(self, file_path: str, parse_line_func: Callable[[dict, str], None]) -> Iterator[RawDataPoint]:
         """
@@ -66,6 +65,10 @@ class CHACollection(Collection):
         info["text_participant"] = " ".join(info["text_participant"])
         info["text_interviewer"] = " ".join(info["text_interviewer"])
         info["text_interviewer_participant"] = " ".join(info["text_interviewer_participant"])
+        
+        # MODIFICADO : Apply dataset-specific metadata enrichment if available
+        if self.enricher is not None:
+            info = self.enricher.enrich(info)
 
         yield info
     
@@ -216,7 +219,25 @@ class CHACollection(Collection):
             Text_participant = raw_datapoint["text_participant"],
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
-        
+      
+def build_enricher(path_to_cha_files):
+    """
+    Select and build the appropriate metadata enricher
+    based on the dataset path.
+    """
+    if "WLS" in path_to_cha_files:
+        from Metadata_integration.Loaders.WLS_loader import WLSLoader
+        from Metadata_integration.Enrichers.WLS_enricher import WLSEnricher
+
+        loader = WLSLoader(
+            "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS/WLS-data.xlsx"
+        )
+        metadata = loader.load_metadata()
+        return WLSEnricher(metadata)
+
+    else:
+        return None  # datasets sin metadata externa
+  
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
@@ -230,10 +251,12 @@ path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WL
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Taukadial" # path to the folder containing .cha files #TODO Ver cómo formatear este dataset : Audio transcription -> Unir datos de la transcripción y del .csv
 
 if __name__ == '__main__':
-    collection = CHACollection(path_to_cha_files,language="english")
-    #collection = CHACollection(path_to_cha_files,language="spanish")
     
-    #collection = CHACollection(path_to_cha_files,language="chinese") #NOTE De momento no usamos el chino para nuestro experimento    
+    enricher = build_enricher(path_to_cha_files)
+    
+    collection = CHACollection(path_to_cha_files,language="english",enricher=enricher)
+    #collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher)
+    #collection = CHACollection(path_to_cha_files,language="chinese",enricher=enricher) #NOTE De momento no usamos el chino para nuestro experimento    
     
     # Making the file name for the output file
     output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
@@ -247,6 +270,14 @@ if __name__ == '__main__':
             normalized_dict = asdict(normalized_datapoint)
             json.dump(normalized_dict, outfile, ensure_ascii=False)
             outfile.write("\n")
+            
+        # Resumen de enriquecimiento (si aplica)
+    if enricher is not None:
+        summary = enricher.summary()
+        print("\nMetadata enrichment summary:")
+        print(f"  Total .cha files processed: {summary['total_files']}")
+        print(f"  Files enriched with metadata: {summary['matched_metadata']}")
+        print(f"  Files without metadata: {summary['missing_metadata']}")
             
 
     

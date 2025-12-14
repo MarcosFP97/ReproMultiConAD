@@ -15,8 +15,8 @@ input_files = [
     "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Kempler.jsonl",
     "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/WLS.jsonl", #TODO
     "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Delware.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_English_train.jsonl", #TODO
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_English_test.jsonl" #TODO
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukadial_English_train.jsonl", #TODO
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukadial_English_test.jsonl" #TODO
 ]
 
 output_directory = '/mnt/beegfs/groups/irgroup/sara_tfg/jsonl'
@@ -121,6 +121,7 @@ test_en  = English_df[English_df["PID"].isin(test_pids)]
 print("Pacientes en train:", len(train_pids))
 print("Pacientes en test:", len(test_pids))
 print("Transcripts en train:", len(train_en))
+
 print("Transcripts en test:", len(test_en))
 
 # Save train and test datasets as JSONL

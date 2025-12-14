@@ -1,21 +1,23 @@
 import pandas as pd
 import json
 import os
-from base_loader import BaseMetadataLoader
+from .base_loader import BaseMetadataLoader
 
 
 class WLSLoader(BaseMetadataLoader):
 
-    def __init__(self, excel_path):
+    def __init__(self, excel_path="/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS/WLS-data.xlsx"):
         self.excel_path = excel_path
 
     def load_metadata(self):
         # --- Load sheet 1 (age, gender) ---
         df1 = pd.read_excel(self.excel_path, sheet_name=0)
+        df1.columns = df1.columns.str.strip()
         df1 = df1.rename(columns=str.lower)
-
-        # Expected columns: idtlkbnk, age2011, sex
-        df1 = df1[['idtlkbnk', 'age2011', 'sex']]
+        #print(df1.columns.tolist())
+        
+        # Expected columns: idtlkbnk, age 2011, sex
+        df1 = df1[['idtlkbnk', 'age 2011', 'sex']]
 
         # Map numeric sex values
         sex_map = {1: "Male", 2: "Female"}
@@ -23,10 +25,13 @@ class WLSLoader(BaseMetadataLoader):
 
         # --- Load sheet 3 (diagnosis from screening threshold) ---
         df3 = pd.read_excel(self.excel_path, sheet_name=2)
+        df3.columns = df3.columns.str.strip()
         df3 = df3.rename(columns=str.lower)
+        #print(df3.columns.tolist())
+
 
         # Expected column: screeningresult with values N/Y
-        df3 = df3[['idtlkbnk', 'screeningresult']]
+        df3 = df3[['idtlkbnk', 'education', 'screeningresult']]
 
         diagnosis_map = {
             'N': 'HC',        # Healthy control
@@ -41,14 +46,20 @@ class WLSLoader(BaseMetadataLoader):
         metadata = {}
 
         for _, row in df.iterrows():
-            file_id = str(row['idtlkbnk']).strip()
+            file_id = str(row['idtlkbnk'])[-5:]
 
             metadata[file_id] = {
-                "Age": row.get("age2011", "Unknown"),
+                "Age": row.get("age 2011", "Unknown"),
                 "Gender": row.get("sex", "Unknown"),
+                "Education": int(row.get("education", "Unknown")),
                 "Diagnosis": row.get("screeningresult", "Unknown"),
                 "Continent": "North America",
                 "Countries": "United States",
             }
 
+        print(metadata)
         return metadata
+
+if __name__ == "__main__":
+    loader = WLSLoader()  
+    metadata = loader.load_metadata()

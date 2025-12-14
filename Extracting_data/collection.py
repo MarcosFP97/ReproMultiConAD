@@ -40,9 +40,10 @@ class NormalizedDataPoint:
 
 
 class Collection(ABC):
-    def __init__(self, path: str, language: str):
+    def __init__(self, path: str, language: str, enricher=None):
         self.path = path
         self.language = language.lower()
+        self.enricher = enricher
 
     @abstractmethod
     def __iter__(self) -> Iterator[RawDataPoint]:
@@ -55,14 +56,6 @@ class Collection(ABC):
     def get_normalized_data(self) -> Iterator[NormalizedDataPoint]:
         for raw_datapoint in self:
             yield self.normalize_datapoint(raw_datapoint)
-
-
-
-
-
-
-
-
 
 
 class JSONLCombiner:
