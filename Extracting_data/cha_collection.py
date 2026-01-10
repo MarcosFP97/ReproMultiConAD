@@ -66,7 +66,7 @@ class CHACollection(Collection):
         info["text_interviewer"] = " ".join(info["text_interviewer"])
         info["text_interviewer_participant"] = " ".join(info["text_interviewer_participant"])
         
-        # MODIFICADO : Apply dataset-specific metadata enrichment if available
+        # MODIFICADO : Añadimos metadata si aplica
         if self.enricher is not None:
             info = self.enricher.enrich(info)
 
@@ -105,7 +105,7 @@ class CHACollection(Collection):
             info["gender"] = parts[4].strip()
             if parts[9].isdigit():
                 info["MMSE"] = int(parts[9])
-                #info["Moca"] = int(parts[9]) # Dalware
+                #info["Moca"] = int(parts[9]) # Delaware
             elif parts[8].isdigit():
                 info["MMSE"] = int(parts[8])
                 #info["Moca"] = int(parts[8]) # Baycrest dataset
@@ -122,12 +122,15 @@ class CHACollection(Collection):
             interviewer_text = line.replace("*INV:", "").strip()
             info["text_interviewer"].append(interviewer_text)
             info["text_interviewer_participant"].append("INT: "+interviewer_text)
+        
+        #info["Diagnosis"] = "AD" # Kempler -> Todos tienen Alzheimer 
             
     def _parse_line_spanish(self, info: dict, line: str,file_path: str):
         """
         Language-specific line parser for Spanish.
         """
-        info["File_ID"] = os.path.splitext(os.path.basename(file_path))[0]# PerLA
+
+        #info["File_ID"] = os.path.splitext(os.path.basename(file_path))[0]# PerLA
         if line.startswith("@PID:"):
             info["PID"] = line.split(":")[1].strip()
         elif line.startswith("@Transcriber:"):
@@ -140,7 +143,7 @@ class CHACollection(Collection):
             info["Duration"] = line.split(":", 1)[1].strip()
         elif line.startswith("@Languages:"):
             info["Languages"] = line.split(":")[1].strip()
-            #info["Languages"]= 'spanish' # Ivanova dataset
+            info["Languages"]= 'spanish' # Ivanova dataset
         elif line.startswith("@Participants:"): # e.g., PAR Participant, INV Investigator
             info["Participants"] = line.split(":")[1].strip()
         elif line.startswith("@G:"):
@@ -153,12 +156,8 @@ class CHACollection(Collection):
             info["Task"].append(line.split(":")[1].strip())
         elif line.startswith("@comment:"):
             info["Comment"] = line.split(":")[1].strip()
-        elif line.startswith("@Media:"):
-            media_parts = line.split(":")[1].strip().split(",")
-            if len(media_parts) > 1:
-                #info["File_ID"] = media_parts[0].strip()# Ivanova
-                info["Media"] = media_parts[1].strip()
-        elif line.startswith("@ID:") and "Target_Adult" in line:
+
+        elif line.startswith("@ID:") and "Target_Adult" in line: 
             parts = line.split("|")
             info["Languages"] = parts[0].split()[-1].strip()
             info["Dataset"] = parts[1].strip()
@@ -171,11 +170,25 @@ class CHACollection(Collection):
                 info["MMSE"] = int(parts[9])
             elif parts[8].isdigit():
                 info["MMSE"] = int(parts[8])
-        elif line.startswith("@Media:"):
-            media_parts = line.split(":")[1].strip().split(",")
+                
+        elif line.startswith("@Media:"):  # Ivanova
+            info["Dataset"] = "Ivanova"
+
+            media_parts = line.split(":", 1)[1].strip().split(",")
             if len(media_parts) > 1:
-                info["File_ID"] = media_parts[0].strip()
+                filename = media_parts[0].strip()  # AD-M-57-163
+                info["File_ID"] = filename
                 info["Media"] = media_parts[1].strip()
+                
+                # EXTRAER INFO CLÍNICA DEL NOMBRE DEL ARCHIVO (AÑADIDO)
+                name_parts = filename.split("-")
+                if len(name_parts) >= 3:
+                    # Diagnosis
+                    info["Diagnosis"] = name_parts[0]
+                    # Gender
+                    info["gender"] = name_parts[1]
+                    # Age
+                    info["age"] = int(name_parts[2])
         
         elif line.startswith("*PAR:"): # Ivanova
             participant_text = line.replace("*PAR:", "").strip()
@@ -222,40 +235,43 @@ class CHACollection(Collection):
       
 def build_enricher(path_to_cha_files):
     """
-    Select and build the appropriate metadata enricher
-    based on the dataset path.
+    Selecciona y construye el enricher apropiado en función del dataset path
     """
     if "WLS" in path_to_cha_files:
         from Metadata_integration.Loaders.WLS_loader import WLSLoader
         from Metadata_integration.Enrichers.WLS_enricher import WLSEnricher
 
-        loader = WLSLoader(
-            "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS/WLS-data.xlsx"
-        )
+        loader = WLSLoader()
         metadata = loader.load_metadata()
         return WLSEnricher(metadata)
+    
+    elif "VAS" in path_to_cha_files:
+        from Metadata_integration.Loaders.VAS_loader import VASLoader
+        from Metadata_integration.Enrichers.VAS_enricher import VASEnricher
+
+        loader = VASLoader()
+        metadata = loader.load_metadata()
+        return VASEnricher(metadata)
 
     else:
         return None  # datasets sin metadata externa
   
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
+path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Kempler" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Lu" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/PerLA" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files
-path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files #TODO Añadir el diagnóstico a partir del Excel, 3ª hoja última columna
-
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Taukadial" # path to the folder containing .cha files #TODO Ver cómo formatear este dataset : Audio transcription -> Unir datos de la transcripción y del .csv
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files #TODO Añadir información a partir del excel
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files #TODO Añadir el diagnóstico a partir del Excel, 3ª hoja última columna
 
 if __name__ == '__main__':
     
     enricher = build_enricher(path_to_cha_files)
     
-    collection = CHACollection(path_to_cha_files,language="english",enricher=enricher)
-    #collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher)
+    #collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
+    collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
     #collection = CHACollection(path_to_cha_files,language="chinese",enricher=enricher) #NOTE De momento no usamos el chino para nuestro experimento    
     
     # Making the file name for the output file

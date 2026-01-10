@@ -3,16 +3,15 @@ from abc import ABC, abstractmethod
 
 class BaseMetadataEnricher(ABC):
     """
-    Base class for dataset-specific metadata enrichers.
+    Clase base para el enriquecimiento de cada dataset específico
 
-    Each enricher adds missing metadata fields to a parsed CHA
-    data point according to the rules of a specific dataset.
+    Cada enricher añade metadata faltante al jsonl base creado para la colección
     """
 
     @abstractmethod
     def enrich(self, info: dict) -> dict:
         """
-        Enrich a parsed CHA metadata dictionary in a dataset-specific way.
+        Enriquece el jsonl asociado al dataset
 
         Parameters
         ----------

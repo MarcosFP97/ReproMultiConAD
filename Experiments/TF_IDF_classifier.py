@@ -1,4 +1,9 @@
+import os
+import sys
 import pandas as pd
+import numpy as np
+from datetime import datetime
+from sklearn.metrics import confusion_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
@@ -17,14 +22,15 @@ parser.add_argument('--translated', required=True) # use "yes", if you want to t
 args_slurm = parser.parse_args()
 
 path_to_data_folder = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/"
-train_en = pd.read_json(path_to_data_folder + "/train_english.jsonl", lines=True)
-test_en = pd.read_json(path_to_data_folder + "/test_english.jsonl", lines=True)
+train_en = pd.read_json(path_to_data_folder + "train_english.jsonl", lines=True)
+test_en = pd.read_json(path_to_data_folder + "test_english.jsonl", lines=True)
+
+train_spa = pd.read_json(path_to_data_folder + "train_spanish.jsonl", lines=True)
+test_spa=pd.read_json(path_to_data_folder + "test_spanish.jsonl", lines=True)
 
 #----------------------------------- de momento estos no -----------------------------------------
-#train_spa = pd.read_json(path_to_data_folder + "/translated_train_df_spa.jsonl", lines=True)
 #train_gr = pd.read_json(path_to_data_folder+"/translated_train_gr.jsonl", lines=True)
 #train_cha = pd.read_json(path_to_data_folder + "/translated_train_cha.jsonl", lines=True)
-#test_spa=pd.read_json(path_to_data_folder + "/translated_test_df_spa.jsonl", lines=True)
 #test_gr= pd.read_json(path_to_data_folder + "/translated_test_gr.jsonl", lines=True)
 #test_cha= pd.read_json(path_to_data_folder + "/translated_test_cha.jsonl", lines=True)
 #------------------------------------------------------------------------------------------------
@@ -38,12 +44,35 @@ test_en = pd.read_json(path_to_data_folder + "/test_english.jsonl", lines=True)
 #    'spa': test_spa
 #}
 
-# Mono-lingual training and testing => AHORA SOLO INGLÉS
+# Mono-lingual training and testing => AHORA SOLO ESPAÑOL
 train_dfs = [train_en]
 test_dfs = {
     'en': test_en
 }
 
+def _get_confidence(estimator, X):
+    """
+    Devuelve un score de confianza por ejemplo.
+    - Si hay predict_proba: max(probabilidades)
+    - Si hay decision_function:
+        * binario: |score|
+        * multiclase: margen top1-top2
+    """
+    if hasattr(estimator, "predict_proba"):
+        proba = estimator.predict_proba(X)
+        conf = proba.max(axis=1)
+        return conf
+    elif hasattr(estimator, "decision_function"):
+        dec = estimator.decision_function(X)
+        if dec.ndim == 1:          # binario
+            conf = np.abs(dec)
+        else:                      # multiclase
+            # margen entre las 2 clases con mayor score
+            top2 = np.partition(dec, -2, axis=1)[:, -2:]
+            conf = top2[:, 1] - top2[:, 0]
+        return conf
+    else:
+        return None
 
 
 # Add a column for translated text for English dataset
@@ -100,15 +129,103 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         grid_search.fit(X_train_tfidf, y_train)
 
         y_pred = grid_search.predict(X_test_tfidf)
+        
+        best_model = grid_search.best_estimator_
+        conf = _get_confidence(best_model, X_test_tfidf)
+
+        # DataFrame de evaluación
+        eval_df = test_df.copy()
+
+        # texto usado (translated o no) para imprimir ejemplos
+        eval_df["_text"] = X_test.astype(str).values
+        eval_df["y_true"] = y_test.astype(str).values
+        eval_df["y_pred"] = pd.Series(y_pred).astype(str).values
+        eval_df["correct"] = (eval_df["y_true"] == eval_df["y_pred"])
+
+        if conf is None:
+            eval_df["conf"] = np.nan
+        else:
+            eval_df["conf"] = conf
+
+        # snippet corto para que no te explote el log
+        eval_df["text_snip"] = (
+            eval_df["_text"]
+            .str.replace("\n", " ", regex=False)
+            .str.replace("\t", " ", regex=False)
+            .str.slice(0, 220)
+        )
+
+        # ---- Resumen de aciertos/fallos
+        n_total = len(eval_df)
+        n_ok = int(eval_df["correct"].sum())
+        n_bad = n_total - n_ok
+        print("--------------------------------------------------")
+        print(f"[{name}] Resumen ejemplos")
+        print(f"Total: {n_total} | Aciertos: {n_ok} | Fallos: {n_bad}")
+        print("Aciertos por clase (y_true):")
+        print(eval_df.loc[eval_df["correct"], "y_true"].value_counts())
+        print("Fallos por clase (y_true):")
+        print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
+
+        # ---- Matriz de confusión
+        labels = list(grid_search.classes_)  # clases vistas en training
+        cm = confusion_matrix(eval_df["y_true"], eval_df["y_pred"], labels=labels)
+        cm_df = pd.DataFrame(cm,
+                            index=[f"true_{l}" for l in labels],
+                            columns=[f"pred_{l}" for l in labels])
+        print("\nMatriz de confusión:")
+        print(cm_df)
+
+        # Confusiones más frecuentes (true != pred)
+        confusions = []
+        for i, tl in enumerate(labels):
+            for j, pl in enumerate(labels):
+                if i != j and cm[i, j] > 0:
+                    confusions.append((cm[i, j], tl, pl))
+        confusions.sort(reverse=True, key=lambda x: x[0])
+        if confusions:
+            print("\nTop confusiones (count, true -> pred):")
+            for c, tl, pl in confusions[:10]:
+                print(f"  {c:>4}  {tl} -> {pl}")
+
+        # ---- Columnas útiles para imprimir (si existen IDs en tu dataset)
+        id_candidates = ["ID", "Participant_ID", "participant_id", "Interview_ID", "File", "file"]
+        id_cols = [c for c in id_candidates if c in eval_df.columns]
+        show_cols = id_cols + ["conf", "y_true", "y_pred", "text_snip"]
+
+        def _print_block(df, title, n=20):
+            print(f"\n{title}")
+            if len(df) == 0:
+                print("  (vacío)")
+                return
+            n = min(n, len(df))
+            print(df[show_cols].head(n).to_string(index=False))
+
+        # ---- 20 MEJORES: aciertos con más confianza
+        best_correct = eval_df[eval_df["correct"]].copy()
+        if best_correct["conf"].notna().any():
+            best_correct = best_correct.sort_values("conf", ascending=False)
+        _print_block(best_correct, "20 MEJORES (aciertos más seguros):", n=20)
+
+        # ---- 20 PEORES: fallos con más confianza (los errores más graves)
+        worst_wrong = eval_df[~eval_df["correct"]].copy()
+        if worst_wrong["conf"].notna().any():
+            worst_wrong = worst_wrong.sort_values("conf", ascending=False)
+        _print_block(worst_wrong, "20 PEORES (fallos con más confianza):", n=20)
+
+        # (Opcional) si también quieres ver fallos “dudosos” (confianza baja), descomenta:
+        # if worst_wrong["conf"].notna().any():
+        #     worst_ambiguous = eval_df[~eval_df["correct"]].sort_values("conf", ascending=True)
+        #     _print_block(worst_ambiguous, "20 FALLOS más dudosos (confianza más baja):", n=20)
+
 
         # -------------- GUARDAMOS DATOS ----------------
         report = classification_report(y_test, y_pred, output_dict=True)
 
-        results.append({
+        metrics_dict = {
             "Classifier": name,
-            "Best Params": grid_search.best_params_,
+            "Best Params": str(grid_search.best_params_),
 
-            # Accuracy general
             "Accuracy": report["accuracy"],
 
             # ---- Métricas Dementia ----
@@ -135,8 +252,21 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
 
             "Test Language": test_language,
             "Task": task,
-            "Translated": translated
-        })
+            "Translated": translated,
+            "Representation": "TF-IDF"
+        }
+
+        # Pasamos a formato vertical
+        metrics_df = pd.DataFrame(
+            list(metrics_dict.items()),
+            columns=["Metric", "Value"]
+        )
+
+        # Añadimos el clasificador como columna
+        metrics_df["Classifier"] = name
+
+        results.append(metrics_df)
+
         # ----------------------------------------------
 
         print(f"Classifier: {name}")
@@ -146,10 +276,11 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         print("\n")
 
     # ------------------ GUARDAMOS DATOS ------------------
-    results_path = "/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_results.xlsx"
+    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_{test_language}_results.xlsx"
 
-    results_df = pd.DataFrame(results)
-    results_df.to_excel(results_path, index=False)
+    final_df = pd.concat(results, ignore_index=True)
+    final_df.to_excel(results_path, index=False)
+
     print(f"Resultados guardados en: {results_path}")
     # -----------------------------------------------------
 
@@ -161,4 +292,22 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     print("TF-IDF")
     print("Translation status: ",translated)
 
+# --- log a TXT (solo archivo) ---
+log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
+os.makedirs(log_dir, exist_ok=True)
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_path = os.path.join(
+    log_dir,
+    f"TFIDF_{args_slurm.test_language}.txt"
+)
+
+sys.stdout = open(log_path, "w", encoding="utf-8")
+sys.stderr = sys.stdout  # opcional: también guarda errores
+
+print(f"Logging en: {log_path}\n")
+
 classify_language_dataset_TFIDF(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task,translated=args_slurm.translated)
+
+sys.stdout.close()
+

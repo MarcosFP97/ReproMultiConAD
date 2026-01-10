@@ -3,15 +3,15 @@ from abc import ABC, abstractmethod
 
 class BaseMetadataLoader(ABC):
     """
-    Base class for metadata loaders.
-    Each loader must implement load_metadata()
-    and return a dictionary indexed by file_id.
+    Clase base para los metadata loaders.
+    Cada loader debe implementar load_metadata()
+    y devolver un diccionario indexado por file_id.
     """
 
     @abstractmethod
     def load_metadata(self):
         """
-        Load and return metadata as a dictionary.
+        Carga y devuelve metadata en un diccionario.
 
         Returns
         -------

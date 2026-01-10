@@ -3,22 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-from collection import JSONLCombiner
+from Extracting_data.collection import JSONLCombiner
 
 input_files = [
-    "path_to_spanish_data_Ivanova.jsonl",
-     "path_to_spanish_data_Perla.jsonl"
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Ivanova.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/PerLA.jsonl"
 ]
-output_directory = 'path_to_output_directory'
+output_directory = '/mnt/beegfs/groups/irgroup/sara_tfg/jsonl'
 output_filename = 'combined_jsonl_spanish_perla_Ivanova.jsonl'
 
 
 combiner = JSONLCombiner(input_files, output_directory, output_filename)
 combiner.combine()
-
-
-
-
 
 
 def preprocess_text(text):
@@ -52,7 +48,8 @@ def preprocess_text(text):
     text = re.sub(r'(\.\s*){2,}', '.', text)
     if '.' in text:
         text = text.rsplit('.', 1)[0] + '.'  # Keep the text before the last period and add the period
-
+    
+    
     return text
 
 
@@ -74,7 +71,6 @@ def plot_text_lengths(dataset, dataset_name):
     plt.title('Point Plot of Text Lengths in PerLA Dataset')
     plt.xticks(rotation=90)  # Rotate x-axis labels if needed
     plt.show()
-
 
 
 def process_transcripts(df, word_limits):
@@ -101,10 +97,13 @@ def process_transcripts(df, word_limits):
 
 
 
-spanish_data_path= "path_to_spanish_data_Ivanova.jsonl"
-df_spanish_per_Iva= pd.read_json(output_directory + output_filename, lines=True)
+#spanish_data_path= "path_to_spanish_data_Ivanova.jsonl"
+df_spanish_per_Iva= pd.read_json(output_directory + "/" + output_filename, lines=True)
 # Replace 'DTA' with 'AD' in the 'Diagnosis' column
-df_spanish_per_Iva["Diagnosis"] = df_spanish_per_Iva["Diagnosis"].replace('DTA', 'AD')
+df_spanish_per_Iva["Diagnosis"] = df_spanish_per_Iva["Diagnosis"].replace({
+    'DTA': 'Dementia',
+    'AD': 'Dementia'
+    })
 # Remove rows with 'unknown' or empty values in the 'Diagnosis' column
 df_spanish_per_Iva = df_spanish_per_Iva[df_spanish_per_Iva["Diagnosis"].notnull() & (df_spanish_per_Iva["Diagnosis"].str.strip() != '') & (df_spanish_per_Iva["Diagnosis"] != 'Unknown')]
 # Preprocess the 'Text_interviewer_participant' column using the 'preprocess_text' function
@@ -112,6 +111,9 @@ df_spanish_per_Iva["Text_interviewer_participant"] = df_spanish_per_Iva["Text_in
 # Adding the lengh count column to dataset
 df_spanish_per_Iva['length'] = df_spanish_per_Iva['Text_interviewer_participant'].apply(lambda x: len(str(x).split()))
 
+# Print the distribution of diagnoses in the processed dataset
+diagnosis_counts = df_spanish_per_Iva["Diagnosis"].value_counts()
+print(diagnosis_counts)
 
 
 # Removing too short and too long transcripts
@@ -122,14 +124,11 @@ word_limits = {
 processed_df = process_transcripts(df_spanish_per_Iva, word_limits)
 train_df_spa, test_df_spa = train_test_split(processed_df, test_size=0.2, stratify=processed_df['Diagnosis'], random_state=42)
 
-
-
-
 # Print the distribution of diagnoses in the processed dataset
 diagnosis_counts = processed_df["Diagnosis"].value_counts()
 print(diagnosis_counts)
 
 # Save train and test datasets as JSONL
-train_df_spa.to_json(output_directory + "train_spanish.jsonl", orient="records", lines=True, force_ascii=False)
-test_df_spa.to_json(output_directory + "test_spanish.jsonl", orient="records", lines=True, force_ascii=False)
+train_df_spa.to_json(output_directory + "/" + "train_spanish_e5.jsonl", orient="records", lines=True, force_ascii=False)
+test_df_spa.to_json(output_directory + "/" + "test_spanish_e5.jsonl", orient="records", lines=True, force_ascii=False)
 

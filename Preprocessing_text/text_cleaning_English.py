@@ -1,29 +1,30 @@
 import re
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-from collection import JSONLCombiner
+from Extracting_data.collection import JSONLCombiner
 
 
 # Pitt, Lu, Baycrest, VAS, Kempler, WLS, Delware, taukdial_English_train, taukdial_English_test
 input_files = [
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Pitt.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Lu.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Baycrest.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/VAS.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Kempler.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/WLS.jsonl", #TODO
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/Delware.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukadial_English_train.jsonl", #TODO
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukadial_English_test.jsonl" #TODO
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Pitt.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Lu.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Baycrest.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/VAS.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Kempler.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/WLS.jsonl", 
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Delaware.jsonl",
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/taukadial_English_train.jsonl", 
+    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/taukadial_English_test.jsonl" 
 ]
 
 output_directory = '/mnt/beegfs/groups/irgroup/sara_tfg/jsonl'
 output_filename = 'combined_jsonl_English.jsonl'
 combiner = JSONLCombiner(input_files, output_directory, output_filename)
 combiner.combine()
-English_df= pd.read_json(output_directory + output_filename, lines=True)
+English_df = pd.read_json(os.path.join(output_directory, output_filename),lines=True)
 
 
 
@@ -41,11 +42,14 @@ def clean_diagnosis(df):
     # Rename diagnoses
     df['Diagnosis'] = df['Diagnosis'].replace({
         'Control': 'HC',
+        'Conrol': 'HC',
         'NC': 'HC',
         'H': 'HC',
         'AD': 'Dementia',
+        'DM': 'Dementia',
         'PossibleAD': 'Dementia',
         'ProbableAD': 'Dementia',
+        'Probable': 'Dementia',
         'potential dementia': 'Dementia',
         'D': 'Dementia',
         "Alzheimer's": 'Dementia'
@@ -53,11 +57,34 @@ def clean_diagnosis(df):
     
     return df
 
+def clean_gender(df):
+    # Normalizar a string y minúsculas
+    df["Gender"] = df["Gender"].astype(str).str.strip().str.lower()
+
+    # Reemplazos estándar
+    df["Gender"] = df["Gender"].replace({
+        "m": "M",
+        "male": "M",
+        "f": "F",
+        "female": "F",
+        "w": "F",
+        "nan": "U",
+        "none": "U",
+        "": "U"
+    })
+
+    # Todo lo que no sea M o F -> U
+    df.loc[~df["Gender"].isin(["M", "F"]), "Gender"] = "U"
+
+    return df
+
+
 def preprocess_text(text):
 
     text = re.sub(r'\b[A-Z]{3}\b', '', text)
     text = re.sub(r'xxx', '', text)
     text = re.sub(r'<[^>]*>', '', text)
+    # Remove qutation and all punctuation marks, in case of TF-IDF, for e5 you should comment out this part.
     text = re.sub(r'[^\w\s]', '', text)
     text = re.sub(r'\d+', '', text)
     text = text.replace('PAR', '')
@@ -82,49 +109,67 @@ def preprocess_text(text):
     text = re.sub(r'([.,!?;:])\s+\1', r'\1', text)
     text = re.sub(r'(\.\s*){2,}', '.', text)
     if '.' in text:
-        text = text.rsplit('.', 1)[0] + '.' 
+        text = text.rsplit('.', 1)[0] + '.'  # Keep the text before the last period and add the period
 
     return text
 
-English_df = remove_zh_language_rows(English_df)
-English_df = clean_diagnosis(English_df)
-English_df["Text_interviewer_participant"] = English_df["Text_interviewer_participant"].apply(preprocess_text)
-
-English_df['Text_length'] = English_df['Text_interviewer_participant'].apply(len)
 
 def remove_short_transcripts(df, min_length=60):
     return df[df['Text_length'] > min_length]
 
+# Cleaning
+English_df = remove_zh_language_rows(English_df)
+English_df = clean_diagnosis(English_df)
+English_df = clean_gender(English_df)
+print(English_df["Diagnosis"].value_counts())
 
+# Preprocessing del texto
+English_df["Text_interviewer_participant"] = English_df["Text_interviewer_participant"].apply(preprocess_text)
+
+English_df['Text_length'] = English_df['Text_interviewer_participant'].apply(len)
+
+# Cleaning 2 : eliminar transcripciones demasiado cortas
 English_df = remove_short_transcripts(English_df)
 
+# Split 80/20 
 #train_en, test_en = train_test_split(English_df, test_size=0.2,stratify=English_df['Diagnosis'], random_state=42)
 
-#NOTE SPLIT POR PACIENTES - Para evitar que 1 mismo paciente que ha hecho 3 pruebas distintas acabe en train y test a la vez
+# METER WLS EN TRAIN, INTENTANDO CONSERVAR EL 80/20
+# Separar WLS
+wls_df = English_df[English_df["Dataset"].str.lower() == "wls"].copy()
+non_wls_df = English_df[English_df["Dataset"].str.lower() != "wls"].copy()
 
-# EXTRAER PID REAL DEL File_ID
-English_df["PID"] = English_df["File_ID"].str.split("-").str[0]
+N_total = len(English_df)
+N_wls = len(wls_df)
+N_non_wls = len(non_wls_df)
 
-# 1. Obtener lista única de pacientes
-unique_pids = English_df["PID"].unique()
+# Queremos 20% del TOTAL en test
+desired_test_size = int(0.2 * N_total)
 
-# 2. Obtener diagnóstico asociado a cada PID
-pid_diagnosis = English_df.groupby("PID")["Diagnosis"].first()
+# Proporción real sobre non-WLS
+test_ratio_non_wls = desired_test_size / N_non_wls
 
-# 3. Split por pacientes, no por transcripts
-train_pids, test_pids = train_test_split(unique_pids, test_size=0.2, random_state=42, stratify=pid_diagnosis.loc[unique_pids])  # estratifica por diagnóstico
+print(f"Total samples: {N_total}")
+print(f"WLS samples (train only): {N_wls}")
+print(f"Non-WLS samples: {N_non_wls}")
+print(f"Desired test size: {desired_test_size}")
+print(f"Test ratio over non-WLS: {test_ratio_non_wls:.3f}")
 
-# 4. Crear los dataframes finales
-train_en = English_df[English_df["PID"].isin(train_pids)]
-test_en  = English_df[English_df["PID"].isin(test_pids)]
+# Split SOLO sobre non-WLS
+train_core, test_en = train_test_split(
+    non_wls_df,
+    test_size=test_ratio_non_wls,
+    stratify=non_wls_df["Diagnosis"],
+    random_state=42
+)
 
-print("Pacientes en train:", len(train_pids))
-print("Pacientes en test:", len(test_pids))
-print("Transcripts en train:", len(train_en))
+# Train final = train_core + WLS
+train_en = pd.concat([train_core, wls_df], ignore_index=True)
 
-print("Transcripts en test:", len(test_en))
+# Barajar train
+train_en = train_en.sample(frac=1, random_state=42).reset_index(drop=True)
 
 # Save train and test datasets as JSONL
-train_en.to_json(output_directory + "train_english.jsonl", orient="records", lines=True, force_ascii=False)
-test_en.to_json(output_directory + "test_english.jsonl", orient="records", lines=True, force_ascii=False)
+train_en.to_json(output_directory + "/train_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
+test_en.to_json(output_directory + "/test_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
 
