@@ -109,9 +109,11 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
         test_df = test_df[test_df['Diagnosis'] != 'MCI']
     
     if translated == "yes":
+        X_test_text = test_df["translated"].astype(str)
         X_test, y_test = extract_embeddings(test_df, 'translated', 'Diagnosis')
     else:
-       X_test, y_test = extract_embeddings(test_df, 'Text_interviewer_participant', 'Diagnosis')
+        X_test_text = test_df["Text_interviewer_participant"].astype(str)
+        X_test, y_test = extract_embeddings(test_df, 'Text_interviewer_participant', 'Diagnosis')
     
     # Para guardar los resultados en un excel
     results = []
