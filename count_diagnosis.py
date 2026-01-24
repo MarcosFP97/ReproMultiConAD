@@ -47,10 +47,10 @@ def count_raw_diagnosis(jsonl_path):
 
             data = json.loads(line)
             
-            if dataset_name.lower().startswith("taukadial"):
-                language = data.get("Languages")
-                if language != "en":
-                    continue
+            #if dataset_name.lower().startswith("taukadial"):
+                #language = data.get("Languages")
+                #if language != "en":
+                #    continue
 
             raw_file_id = data.get("File_ID")
             if not raw_file_id:
@@ -58,7 +58,7 @@ def count_raw_diagnosis(jsonl_path):
 
             # NORMALIZACIÓN ESPECÍFICA POR DATASET
             file_id = data.get("File_ID", "MISSING")
-            #file_id = normalize_file_id(raw_file_id, dataset_name)
+            file_id = normalize_file_id(raw_file_id, dataset_name)
 
             # Si se quiere contar pacientes únicos, descomentar esta línea. Si se quiere contar nº de transcripciones, comentarla
             if file_id in seen_file_ids:

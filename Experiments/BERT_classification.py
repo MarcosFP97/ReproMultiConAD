@@ -22,8 +22,8 @@ OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Mo
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
-#MODEL_NAME = "bert-base-uncased"
-MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+MODEL_NAME = "bert-base-uncased"
+#MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
@@ -445,6 +445,6 @@ def main():
 
     print("\n========== DONE ==========")
 
-
 if __name__ == "__main__":
+
     main()

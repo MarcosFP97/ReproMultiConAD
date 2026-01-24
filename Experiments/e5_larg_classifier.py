@@ -46,10 +46,20 @@ test_spa=pd.read_json(path_to_data_folder + "test_spanish_e5.jsonl", lines=True)
 #    'spa': test_spa
 #}
 
+train_by_lang = {
+    "en": train_en,
+    "spa": train_spa
+}
+
+test_by_lang = {
+    "en": test_en,
+    "spa": test_spa
+}
+
 # Mono-lingual training and testing
-train_dfs = [train_en]
+train_dfs = [train_by_lang[args_slurm.test_language]]
 test_dfs = {
-    'en': test_en
+    args_slurm.test_language: test_by_lang[args_slurm.test_language]
 }
 
 def _get_confidence(estimator, X):
@@ -169,21 +179,31 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
         print("Fallos por clase (y_true):")
         print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
 
-        # ---- Matriz de confusión
-        labels = list(grid_search.classes_)
-        cm = confusion_matrix(eval_df["y_true"], eval_df["y_pred"], labels=labels)
+        # ---- Matriz de confusión (orden fijo: HC, MCI, Dementia) ----
+        desired_order = ["HC", "MCI", "Dementia"]
+
+        # Nos quedamos solo con las clases que realmente existen en este experimento
+        labels_order = [c for c in desired_order if c in grid_search.classes_]
+
+        cm = confusion_matrix(
+            eval_df["y_true"],
+            eval_df["y_pred"],
+            labels=labels_order
+        )
+
         cm_df = pd.DataFrame(
             cm,
-            index=[f"true_{l}" for l in labels],
-            columns=[f"pred_{l}" for l in labels]
+            index=[f"true_{l}" for l in labels_order],
+            columns=[f"pred_{l}" for l in labels_order]
         )
-        print("\nMatriz de confusión:")
+
+        print("\nMatriz de confusión (HC-MCI-Dementia):")
         print(cm_df)
 
         # Confusiones más frecuentes (true != pred)
         confusions = []
-        for i, tl in enumerate(labels):
-            for j, pl in enumerate(labels):
+        for i, tl in enumerate(labels_order):
+            for j, pl in enumerate(labels_order):
                 if i != j and cm[i, j] > 0:
                     confusions.append((cm[i, j], tl, pl))
         confusions.sort(reverse=True, key=lambda x: x[0])
@@ -217,61 +237,64 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
             worst_wrong = worst_wrong.sort_values("conf", ascending=False)
         _print_block(worst_wrong, "20 PEORES (fallos con más confianza):", n=20)
 
-        report = classification_report(y_test, y_pred, output_dict=True)
+        # -------------- GUARDAMOS DATOS ----------------
+        report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         metrics_dict = {
             "Classifier": name,
             "Best Params": str(grid_search.best_params_),
             "Accuracy": report["accuracy"],
-
-            "Dementia_precision": report["Dementia"]["precision"],
-            "Dementia_recall": report["Dementia"]["recall"],
-            "Dementia_f1": report["Dementia"]["f1-score"],
-            "Dementia_support": report["Dementia"]["support"],
-
-            "HC_precision": report["HC"]["precision"],
-            "HC_recall": report["HC"]["recall"],
-            "HC_f1": report["HC"]["f1-score"],
-            "HC_support": report["HC"]["support"],
-
-            "Macro_precision": report["macro avg"]["precision"],
-            "Macro_recall": report["macro avg"]["recall"],
-            "Macro_f1": report["macro avg"]["f1-score"],
-
-            "Weighted_precision": report["weighted avg"]["precision"],
-            "Weighted_recall": report["weighted avg"]["recall"],
-            "Weighted_f1": report["weighted avg"]["f1-score"],
-
             "Test Language": test_language,
             "Task": task,
             "Translated": translated,
             "Representation": "e5-large"
         }
 
-        # Convertimos a formato vertical
-        metrics_df = pd.DataFrame(
-            list(metrics_dict.items()),
-            columns=["Metric", "Value"]
-        )
+        # ---- Métricas por clase (incluye MCI si existe) ----
+        class_labels = list(grid_search.classes_)  # clases vistas en training
 
-        # Añadimos una columna para identificar el clasificador
-        metrics_df["Classifier"] = name
+        for label in class_labels:
+            if label in report and isinstance(report[label], dict):
+                metrics_dict[f"{label}_precision"] = report[label]["precision"]
+                metrics_dict[f"{label}_recall"] = report[label]["recall"]
+                metrics_dict[f"{label}_f1"] = report[label]["f1-score"]
+                metrics_dict[f"{label}_support"] = report[label]["support"]
+            else:
+                # Por si alguna clase no aparece en report (raro, pero mejor prevenir)
+                metrics_dict[f"{label}_precision"] = np.nan
+                metrics_dict[f"{label}_recall"] = np.nan
+                metrics_dict[f"{label}_f1"] = np.nan
+                metrics_dict[f"{label}_support"] = 0
 
-        results.append(metrics_df)
+        # ---- Macro avg ----
+        metrics_dict["Macro_precision"] = report["macro avg"]["precision"]
+        metrics_dict["Macro_recall"] = report["macro avg"]["recall"]
+        metrics_dict["Macro_f1"] = report["macro avg"]["f1-score"]
+
+        # ---- Weighted avg ----
+        metrics_dict["Weighted_precision"] = report["weighted avg"]["precision"]
+        metrics_dict["Weighted_recall"] = report["weighted avg"]["recall"]
+        metrics_dict["Weighted_f1"] = report["weighted avg"]["f1-score"]
+
+        # -> 1 fila
+        results.append(metrics_dict)
+
+        # ----------------------------------------------
 
         print(f"Classifier: {name}")
         print(f"Best Parameters: {grid_search.best_params_}")
         print(f"Test Set Language: {test_language}")
-        print(classification_report(y_test, y_pred))
+        print(classification_report(y_test, y_pred, zero_division=0))
         print("\n")
 
-    # Guardamos en el excel
-    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/E5_{test_language}_results.xlsx"
+    # ------------------ GUARDAMOS DATOS ------------------
+    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/E5_{test_language}_{task}.xlsx"
 
-    final_df = pd.concat(results, ignore_index=True)
+    final_df = pd.DataFrame(results)
     final_df.to_excel(results_path, index=False)
 
     print(f"Resultados guardados en: {results_path}")
+    # -----------------------------------------------------
 
     print("test dataset: ", test_language)
     for df in train_dfs:
@@ -282,19 +305,4 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
     print("Translation status: ",translated)
 
 
-# --- log a TXT (solo archivo) ---
-log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
-os.makedirs(log_dir, exist_ok=True)
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_path = os.path.join(
-    log_dir,
-    f"E5_{args_slurm.test_language}.txt"
-)
-
-sys.stdout = open(log_path, "w", encoding="utf-8")
-sys.stderr = sys.stdout  # opcional: también guarda errores
-
 classify_language_dataset_e5(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task,translated=args_slurm.translated)
-
-sys.stdout.close()

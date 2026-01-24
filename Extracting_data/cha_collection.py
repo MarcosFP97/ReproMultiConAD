@@ -258,20 +258,20 @@ def build_enricher(path_to_cha_files):
   
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
-path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Kempler" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Lu" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/PerLA" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files #TODO Añadir información a partir del excel
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files #TODO Añadir el diagnóstico a partir del Excel, 3ª hoja última columna
+path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files 
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files 
 
 if __name__ == '__main__':
     
     enricher = build_enricher(path_to_cha_files)
     
-    #collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
-    collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
+    collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
+    #collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
     #collection = CHACollection(path_to_cha_files,language="chinese",enricher=enricher) #NOTE De momento no usamos el chino para nuestro experimento    
     
     # Making the file name for the output file

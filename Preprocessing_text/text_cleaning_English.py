@@ -6,6 +6,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from Extracting_data.collection import JSONLCombiner
 
+TFIDF = True
 
 # Pitt, Lu, Baycrest, VAS, Kempler, WLS, Delware, taukdial_English_train, taukdial_English_test
 input_files = [
@@ -80,36 +81,36 @@ def clean_gender(df):
 
 
 def preprocess_text(text):
-
     text = re.sub(r'\b[A-Z]{3}\b', '', text)
     text = re.sub(r'xxx', '', text)
     text = re.sub(r'<[^>]*>', '', text)
     # Remove qutation and all punctuation marks, in case of TF-IDF, for e5 you should comment out this part.
-    text = re.sub(r'[^\w\s]', '', text)
-    text = re.sub(r'\d+', '', text)
-    text = text.replace('PAR', '')
-    text = text.replace('\n', ' ')
-    text = re.sub(r'\s+', ' ', text).strip()
-    text = re.sub(r'\\x[0-9A-Za-z_]+\\x', '', text) 
-    text = re.sub(r'\b\w+:\s*', '', text) 
-    text = text.replace('\n', ' ')
-    text = text.replace('→', '')
-    text = text.replace('(', '').replace(')', '')
-    text = re.sub(r'[\\+^"/„]', '', text)
-    text = re.sub(r"[_']", '', text)
-    text = text.replace('\t', ' ')
-    text = re.sub(r'\[.*?\]', '', text)
-    text = text.replace('&=laughs', '')
-    text = text.replace('&=nods', '')
-    text = text.replace('&=coughs', '')
-    text = text.replace('&=snaps:tongue', '')
-    text = text.replace('<', '').replace('>', '')
-    text = text.replace('*', '').replace('&', '')
-    text = re.sub(r'\s+', ' ', text).strip()
-    text = re.sub(r'([.,!?;:])\s+\1', r'\1', text)
-    text = re.sub(r'(\.\s*){2,}', '.', text)
-    if '.' in text:
-        text = text.rsplit('.', 1)[0] + '.'  # Keep the text before the last period and add the period
+    if TFIDF :
+        text = re.sub(r'[^\w\s]', '', text)
+        text = re.sub(r'\d+', '', text)
+        text = text.replace('PAR', '')
+        text = text.replace('\n', ' ')
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'\\x[0-9A-Za-z_]+\\x', '', text) 
+        text = re.sub(r'\b\w+:\s*', '', text) 
+        text = text.replace('\n', ' ')
+        text = text.replace('→', '')
+        text = text.replace('(', '').replace(')', '')
+        text = re.sub(r'[\\+^"/„]', '', text)
+        text = re.sub(r"[_']", '', text)
+        text = text.replace('\t', ' ')
+        text = re.sub(r'\[.*?\]', '', text)
+        text = text.replace('&=laughs', '')
+        text = text.replace('&=nods', '')
+        text = text.replace('&=coughs', '')
+        text = text.replace('&=snaps:tongue', '')
+        text = text.replace('<', '').replace('>', '')
+        text = text.replace('*', '').replace('&', '')
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'([.,!?;:])\s+\1', r'\1', text)
+        text = re.sub(r'(\.\s*){2,}', '.', text)
+        if '.' in text:
+            text = text.rsplit('.', 1)[0] + '.'  # Keep the text before the last period and add the period
 
     return text
 
@@ -123,53 +124,20 @@ English_df = clean_diagnosis(English_df)
 English_df = clean_gender(English_df)
 print(English_df["Diagnosis"].value_counts())
 
-# Preprocessing del texto
+# Preprocessing del texto : Tanto el texto completo como solo el del participante  
 English_df["Text_interviewer_participant"] = English_df["Text_interviewer_participant"].apply(preprocess_text)
-
 English_df['Text_length'] = English_df['Text_interviewer_participant'].apply(len)
+
+English_df["Text_participant"] = English_df["Text_participant"].apply(preprocess_text)
+English_df['Text_length'] = English_df['Text_participant'].apply(len)
 
 # Cleaning 2 : eliminar transcripciones demasiado cortas
 English_df = remove_short_transcripts(English_df)
 
 # Split 80/20 
-#train_en, test_en = train_test_split(English_df, test_size=0.2,stratify=English_df['Diagnosis'], random_state=42)
-
-# METER WLS EN TRAIN, INTENTANDO CONSERVAR EL 80/20
-# Separar WLS
-wls_df = English_df[English_df["Dataset"].str.lower() == "wls"].copy()
-non_wls_df = English_df[English_df["Dataset"].str.lower() != "wls"].copy()
-
-N_total = len(English_df)
-N_wls = len(wls_df)
-N_non_wls = len(non_wls_df)
-
-# Queremos 20% del TOTAL en test
-desired_test_size = int(0.2 * N_total)
-
-# Proporción real sobre non-WLS
-test_ratio_non_wls = desired_test_size / N_non_wls
-
-print(f"Total samples: {N_total}")
-print(f"WLS samples (train only): {N_wls}")
-print(f"Non-WLS samples: {N_non_wls}")
-print(f"Desired test size: {desired_test_size}")
-print(f"Test ratio over non-WLS: {test_ratio_non_wls:.3f}")
-
-# Split SOLO sobre non-WLS
-train_core, test_en = train_test_split(
-    non_wls_df,
-    test_size=test_ratio_non_wls,
-    stratify=non_wls_df["Diagnosis"],
-    random_state=42
-)
-
-# Train final = train_core + WLS
-train_en = pd.concat([train_core, wls_df], ignore_index=True)
-
-# Barajar train
-train_en = train_en.sample(frac=1, random_state=42).reset_index(drop=True)
+train_en, test_en = train_test_split(English_df, test_size=0.2,stratify=English_df['Diagnosis'], random_state=42)
 
 # Save train and test datasets as JSONL
-train_en.to_json(output_directory + "/train_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
-test_en.to_json(output_directory + "/test_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
+train_en.to_json(output_directory + "/train_english.jsonl", orient="records", lines=True, force_ascii=False)
+test_en.to_json(output_directory + "/test_english.jsonl", orient="records", lines=True, force_ascii=False)
 

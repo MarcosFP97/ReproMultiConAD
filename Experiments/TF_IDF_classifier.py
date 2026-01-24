@@ -14,6 +14,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support # añadimos las ultimas dos para guardar datos en un excel
 import argparse
 
+LABEL = 'Text_interviewer_participant'
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_language', required=True)
 parser.add_argument('--task', required=True)
@@ -44,10 +46,20 @@ test_spa=pd.read_json(path_to_data_folder + "test_spanish.jsonl", lines=True)
 #    'spa': test_spa
 #}
 
-# Mono-lingual training and testing => AHORA SOLO ESPAÑOL
-train_dfs = [train_en]
+train_by_lang = {
+    "en": train_en,
+    "spa": train_spa
+}
+
+test_by_lang = {
+    "en": test_en,
+    "spa": test_spa
+}
+
+# Mono-lingual training and testing
+train_dfs = [train_by_lang[args_slurm.test_language]]
 test_dfs = {
-    'en': test_en
+    args_slurm.test_language: test_by_lang[args_slurm.test_language]
 }
 
 def _get_confidence(estimator, X):
@@ -78,8 +90,8 @@ def _get_confidence(estimator, X):
 # Add a column for translated text for English dataset
 
 if args_slurm.translated== "yes":
-    train_en['translated'] = train_en['Text_interviewer_participant']
-    test_en['translated'] = test_en['Text_interviewer_participant']
+    train_en['translated'] = train_en[LABEL]
+    test_en['translated'] = test_en[LABEL]
 
 def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_state=42,task=None,translated=None):
 
@@ -93,7 +105,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     if translated == "yes":
          X_train = train_combined['translated']
     else:
-        X_train = train_combined['Text_interviewer_participant']
+        X_train = train_combined[LABEL]
     y_train = train_combined['Diagnosis']
 
     tfidf = TfidfVectorizer()
@@ -108,7 +120,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     if translated == "yes":
         X_test = test_df['translated']
     else:
-        X_test = test_df['Text_interviewer_participant']
+        X_test = test_df[LABEL]
 
     y_test = test_df['Diagnosis']
 
@@ -141,6 +153,44 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         eval_df["y_true"] = y_test.astype(str).values
         eval_df["y_pred"] = pd.Series(y_pred).astype(str).values
         eval_df["correct"] = (eval_df["y_true"] == eval_df["y_pred"])
+        
+        # --- Asegurar columna Dataset ---
+        # (si ya existe, perfecto; si no, intenta alternativas)
+        if "Dataset" not in eval_df.columns:
+            for alt in ["dataset", "DATASET", "Corpus", "corpus"]:
+                if alt in eval_df.columns:
+                    eval_df["Dataset"] = eval_df[alt]
+                    break
+            else:
+                eval_df["Dataset"] = "Unknown"
+
+        # --- Fallos por dataset ---
+        print("--------------------------------------------------")
+        print(f"[{name}] Resumen ejemplos")
+        wrong_df = eval_df[~eval_df["correct"]].copy()
+
+        wrong_by_dataset = (
+            wrong_df["Dataset"]
+            .value_counts(dropna=False)
+        )
+
+        # --- (opcional) tasa de fallo por dataset ---
+        total_by_dataset = eval_df["Dataset"].value_counts(dropna=False)
+
+        fail_rate = (wrong_by_dataset / total_by_dataset).fillna(0).sort_values(ascending=False)
+
+        print("\nFallos por Dataset (conteo):")
+        print(wrong_by_dataset.to_string())
+
+        print("\nFallos por Dataset (tasa = fallos/total en test):")
+        fail_table = pd.DataFrame({
+            "wrong": wrong_by_dataset,
+            "total": total_by_dataset,
+            "fail_rate": fail_rate
+        }).fillna(0).sort_values("wrong", ascending=False)
+
+        print(fail_table.to_string())
+
 
         if conf is None:
             eval_df["conf"] = np.nan
@@ -159,8 +209,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         n_total = len(eval_df)
         n_ok = int(eval_df["correct"].sum())
         n_bad = n_total - n_ok
-        print("--------------------------------------------------")
-        print(f"[{name}] Resumen ejemplos")
         print(f"Total: {n_total} | Aciertos: {n_ok} | Fallos: {n_bad}")
         print("Aciertos por clase (y_true):")
         print(eval_df.loc[eval_df["correct"], "y_true"].value_counts())
@@ -213,72 +261,66 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             worst_wrong = worst_wrong.sort_values("conf", ascending=False)
         _print_block(worst_wrong, "20 PEORES (fallos con más confianza):", n=20)
 
-        # (Opcional) si también quieres ver fallos “dudosos” (confianza baja), descomenta:
+        # (Opcional) si también quieres ver fallos “dudosos” (confianza baja), descomentar:
         # if worst_wrong["conf"].notna().any():
         #     worst_ambiguous = eval_df[~eval_df["correct"]].sort_values("conf", ascending=True)
         #     _print_block(worst_ambiguous, "20 FALLOS más dudosos (confianza más baja):", n=20)
 
 
         # -------------- GUARDAMOS DATOS ----------------
-        report = classification_report(y_test, y_pred, output_dict=True)
+        report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         metrics_dict = {
             "Classifier": name,
             "Best Params": str(grid_search.best_params_),
-
             "Accuracy": report["accuracy"],
-
-            # ---- Métricas Dementia ----
-            "Dementia_precision": report["Dementia"]["precision"],
-            "Dementia_recall": report["Dementia"]["recall"],
-            "Dementia_f1": report["Dementia"]["f1-score"],
-            "Dementia_support": report["Dementia"]["support"],
-
-            # ---- Métricas HC ----
-            "HC_precision": report["HC"]["precision"],
-            "HC_recall": report["HC"]["recall"],
-            "HC_f1": report["HC"]["f1-score"],
-            "HC_support": report["HC"]["support"],
-
-            # ---- Macro avg ----
-            "Macro_precision": report["macro avg"]["precision"],
-            "Macro_recall": report["macro avg"]["recall"],
-            "Macro_f1": report["macro avg"]["f1-score"],
-
-            # ---- Weighted avg ----
-            "Weighted_precision": report["weighted avg"]["precision"],
-            "Weighted_recall": report["weighted avg"]["recall"],
-            "Weighted_f1": report["weighted avg"]["f1-score"],
-
             "Test Language": test_language,
             "Task": task,
             "Translated": translated,
             "Representation": "TF-IDF"
         }
 
-        # Pasamos a formato vertical
-        metrics_df = pd.DataFrame(
-            list(metrics_dict.items()),
-            columns=["Metric", "Value"]
-        )
+        # ---- Métricas por clase (incluye MCI si existe) ----
+        class_labels = list(grid_search.classes_)  # clases vistas en training
 
-        # Añadimos el clasificador como columna
-        metrics_df["Classifier"] = name
+        for label in class_labels:
+            if label in report and isinstance(report[label], dict):
+                metrics_dict[f"{label}_precision"] = report[label]["precision"]
+                metrics_dict[f"{label}_recall"] = report[label]["recall"]
+                metrics_dict[f"{label}_f1"] = report[label]["f1-score"]
+                metrics_dict[f"{label}_support"] = report[label]["support"]
+            else:
+                # Por si alguna clase no aparece en report (raro, pero mejor prevenir)
+                metrics_dict[f"{label}_precision"] = np.nan
+                metrics_dict[f"{label}_recall"] = np.nan
+                metrics_dict[f"{label}_f1"] = np.nan
+                metrics_dict[f"{label}_support"] = 0
 
-        results.append(metrics_df)
+        # ---- Macro avg ----
+        metrics_dict["Macro_precision"] = report["macro avg"]["precision"]
+        metrics_dict["Macro_recall"] = report["macro avg"]["recall"]
+        metrics_dict["Macro_f1"] = report["macro avg"]["f1-score"]
+
+        # ---- Weighted avg ----
+        metrics_dict["Weighted_precision"] = report["weighted avg"]["precision"]
+        metrics_dict["Weighted_recall"] = report["weighted avg"]["recall"]
+        metrics_dict["Weighted_f1"] = report["weighted avg"]["f1-score"]
+
+        # -> 1 fila
+        results.append(metrics_dict)
 
         # ----------------------------------------------
 
         print(f"Classifier: {name}")
         print(f"Best Parameters: {grid_search.best_params_}")
         print(f"Test Set Language: {test_language}")
-        print(classification_report(y_test, y_pred))
+        print(classification_report(y_test, y_pred, zero_division=0))
         print("\n")
 
     # ------------------ GUARDAMOS DATOS ------------------
-    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_{test_language}_results.xlsx"
+    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_{test_language}_{task}.xlsx"
 
-    final_df = pd.concat(results, ignore_index=True)
+    final_df = pd.DataFrame(results)
     final_df.to_excel(results_path, index=False)
 
     print(f"Resultados guardados en: {results_path}")
@@ -299,7 +341,7 @@ os.makedirs(log_dir, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_path = os.path.join(
     log_dir,
-    f"TFIDF_{args_slurm.test_language}.txt"
+    f"TFIDF_{args_slurm.test_language}_{args_slurm.task}.log"
 )
 
 sys.stdout = open(log_path, "w", encoding="utf-8")

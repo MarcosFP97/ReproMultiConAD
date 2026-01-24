@@ -53,7 +53,7 @@ class ASRCollection(Collection):
                     "Moca": "Unknown",
                     "Setting": "Unknown",
                     "Comment": "Unknown",
-                    "text_participant": [],
+                    "text_participant": item.get("transcription", []),
                     "text_interviewer": [],
                     "text_interviewer_participant": item.get("transcription", []),
                 }
@@ -103,22 +103,22 @@ class ASRCollection(Collection):
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
 
-path_to_ASR_files = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_train_transcrpt.json"
-#path_to_ASR_files = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_test_transcrpt.json"
+#path_to_ASR_files = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_treatment/taukdial_train_transcrpt.json"
+path_to_ASR_files = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_treatment/taukdial_test_transcrpt.json"
 
 
 
 if __name__ == '__main__':
     
-    metadata_loader = TAUKADIALTrainLoader()
-    #metadata_loader = TAUKADIALTestLoader()
+    #metadata_loader = TAUKADIALTrainLoader()
+    metadata_loader = TAUKADIALTestLoader()
     taukadial_metadata = metadata_loader.load_metadata()
     
     collection = ASRCollection(path_to_ASR_files, taukadial_metadata)
 
     # Making the file name for the output file
     last_words = path_to_ASR_files.split('/')[-3:]
-    output_file_name = f"taukadial_English_train.jsonl"
+    output_file_name = f"taukadial_English_test.jsonl"
     
     # Writing the normalized data to the output file
     output_file_path = os.path.join("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection", output_file_name)
