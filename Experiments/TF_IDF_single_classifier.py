@@ -95,15 +95,18 @@ def _get_confidence(estimator, X):
         return np.abs(dec) if dec.ndim == 1 else (np.partition(dec, -2, axis=1)[:, -1] - np.partition(dec, -2, axis=1)[:, -2])
     return None
 
+# =========================
+# SVM representations
+# =========================
 def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_params, dataset_name, positive_label, out_path=None, random_state=42):
     """
     Visualiza una frontera SVM en 2D:
     - Proyecta TF-IDF a 2D con TruncatedSVD
     - Escala (StandardScaler)
-    - Entrena SVM con best_params (kernel/C y gamma si aplica)
+    - Entrena SVM con best_params (kernel/C)
     - Dibuja frontera (nivel 0) y márgenes (niveles ±1)
     """
-    # 1) Proyección a 2D (sparse-friendly)
+    # 1) Proyección a 2D (sparse-friendly)  
     svd = TruncatedSVD(n_components=2, random_state=random_state)
     Xtr_2d = svd.fit_transform(X_train_tfidf)
     Xte_2d = svd.transform(X_test_tfidf)
@@ -162,6 +165,60 @@ def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_para
     else:
         plt.show()
 
+def plot_svm_svd3d_scatter(X_train_tfidf, y_train, X_test_tfidf, y_test,
+                          best_params, dataset_name, positive_label,
+                          out_path=None, random_state=42):
+    """
+    Visualiza HC vs positive_label en 3D:
+    - Proyecta TF-IDF a 3D con TruncatedSVD
+    - Escala (StandardScaler)
+    - (Opcional) entrena SVM 3D solo para coherencia, pero NO dibuja hiperplano
+    - Dibuja scatter 3D train/test por clase
+    """
+    # 1) Proyección a 3D
+    svd = TruncatedSVD(n_components=3, random_state=random_state)
+    Xtr_3d = svd.fit_transform(X_train_tfidf)
+    Xte_3d = svd.transform(X_test_tfidf)
+
+    # 2) Entrenamos SVM 3D (no obligatorio, pero útil si quieres asegurar consistencia)
+    svm_kwargs = {
+        "kernel": best_params.get("kernel", "linear"),
+        "C": best_params.get("C", 1.0),
+    }
+    clf3d = Pipeline([
+        ("scaler", StandardScaler()),
+        ("svm", SVC(**svm_kwargs)),
+    ])
+    clf3d.fit(Xtr_3d, y_train)
+
+    # 3) Plot 3D
+    fig = plt.figure(figsize=(9, 7))
+    ax = fig.add_subplot(111, projection="3d")
+
+    classes = ["HC", positive_label]
+    markers = {"HC": "o", positive_label: "s"}
+
+    for cls in classes:
+        tr_idx = (y_train == cls)
+        te_idx = (y_test == cls)
+
+        ax.scatter(Xtr_3d[tr_idx, 0], Xtr_3d[tr_idx, 1], Xtr_3d[tr_idx, 2],
+                   marker=markers[cls], alpha=0.25, label=f"train {cls}")
+        ax.scatter(Xte_3d[te_idx, 0], Xte_3d[te_idx, 1], Xte_3d[te_idx, 2],
+                   marker=markers[cls], alpha=0.95, label=f"test {cls}")
+
+    ax.set_title(f"{dataset_name} | HC vs {positive_label} | SVM({svm_kwargs['kernel']}, C={svm_kwargs['C']}) en SVD-3D")
+    ax.set_xlabel("SVD comp. 1")
+    ax.set_ylabel("SVD comp. 2")
+    ax.set_zlabel("SVD comp. 3")
+    ax.legend()
+    plt.tight_layout()
+
+    if out_path:
+        plt.savefig(out_path, dpi=200)
+        plt.close()
+    else:
+        plt.show()
 
 # =========================
 # RUN TF-IDF
@@ -222,6 +279,19 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
                 random_state=random_state
             )
             print(f"[SVM] Figura guardada en: {fig_path}")
+            
+            fig_path_3d = os.path.join(fig_dir, f"SVM_balanced_scatter3D_{DATASET}_HC_vs_{positive_label}.png")
+
+            plot_svm_svd3d_scatter(
+                X_train, y_train.values,
+                X_test,  y_test.values,
+                best_params=grid_search.best_params_,
+                dataset_name=DATASET,
+                positive_label=positive_label,
+                out_path=fig_path_3d,
+                random_state=random_state
+            )
+            print(f"[SVM] Figura 3D guardada en: {fig_path_3d}")
 
 
         # ====== Resumen ======

@@ -6,7 +6,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from Extracting_data.collection import JSONLCombiner
 
-TFIDF = True
+TFIDF = False
 
 # Pitt, Lu, Baycrest, VAS, Kempler, WLS, Delware, taukdial_English_train, taukdial_English_test
 input_files = [
@@ -83,7 +83,7 @@ def clean_gender(df):
 def preprocess_text(text):
     text = re.sub(r'\b[A-Z]{3}\b', '', text)
     text = re.sub(r'xxx', '', text)
-    text = re.sub(r'<[^>]*>', '', text)
+    text = re.sub(r'<[^>]*>', '', text) 
     # Remove qutation and all punctuation marks, in case of TF-IDF, for e5 you should comment out this part.
     if TFIDF :
         text = re.sub(r'[^\w\s]', '', text)
@@ -138,6 +138,6 @@ English_df = remove_short_transcripts(English_df)
 train_en, test_en = train_test_split(English_df, test_size=0.2,stratify=English_df['Diagnosis'], random_state=42)
 
 # Save train and test datasets as JSONL
-train_en.to_json(output_directory + "/train_english.jsonl", orient="records", lines=True, force_ascii=False)
-test_en.to_json(output_directory + "/test_english.jsonl", orient="records", lines=True, force_ascii=False)
+train_en.to_json(output_directory + "/train_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
+test_en.to_json(output_directory + "/test_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
 

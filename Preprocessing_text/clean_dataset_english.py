@@ -13,7 +13,7 @@ MIN_TEXT_LEN = 60  # mínimo de caracteres (después de limpiar)
 
 # === Elige UN SOLO dataset (un único .jsonl) ===
 
-DATASET_NAME = "Delaware"  # para nombrar los ficheros de salida
+DATASET_NAME = "WLS"  # para nombrar los ficheros de salida
 INPUT_JSONL = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/{DATASET_NAME}.jsonl"
 
 OUTPUT_DIRECTORY = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"

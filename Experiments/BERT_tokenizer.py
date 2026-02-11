@@ -1,11 +1,12 @@
 import os
 import pandas as pd
-import numpy as np
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 
+import argparse
+import numpy as np
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import Dataset, DataLoader
@@ -19,7 +20,7 @@ from tqdm import tqdm
 
 TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
 TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
-OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
+OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_patient_classifier_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
@@ -30,6 +31,12 @@ MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
+
+def get_paths_for_mode(mode: str):
+    train_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5_markers_{mode}.jsonl"
+    test_path  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5_markers_{mode}.jsonl"
+    out_dir    = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256_{mode}"
+    return train_path, test_path, out_dir
 
 DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario, como ya estabas haciendo
 VERBOSE = True             # ponlo en False si quieres menos prints
@@ -172,6 +179,19 @@ def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=F
 # ============================================================
 # 3) MODEL SETUP
 # ============================================================
+
+def get_special_tokens_for_mode(mode: str):
+    if mode == "pause":
+        return ["[PAUSE]"]
+    if mode == "rep":
+        return ["[REP]"]
+    if mode == "ref":
+        return ["[REF]"]
+    if mode == "all":
+        return ["[PAUSE]", "[REP]", "[REF]"]
+    raise ValueError(f"Unknown mode: {mode}")
+
+
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -405,10 +425,19 @@ def save_results_excel(
 
     print(f"[SAVE] Excel results saved to: {out_path}")
 
+
 # ============================================================
 # MAIN
 # ============================================================
 def main():
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", required=True, choices=["pause","rep","ref","all"])
+    args = parser.parse_args()
+    mode = args.mode
+
+    TRAIN_PATH, TEST_PATH, OUTPUT_DIR = get_paths_for_mode(mode)
+
     print("========== BERT TEXT CLASSIFICATION PIPELINE ==========")
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -433,8 +462,16 @@ def main():
     #tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 
+    # 4.1) AÑADIMOS LOS SPECIAL TOKENS
+    specials = get_special_tokens_for_mode(mode)
+    tokenizer.add_special_tokens({"additional_special_tokens": specials})
+
     if VERBOSE:
-        describe_token_lengths(train_df, tokenizer, TEXT_COL, MAX_LEN)
+        test_str = "a " + " b ".join(specials) + " c"
+        print("[TOKENIZER] Added special tokens:", specials)
+        print("[TOKENIZER] Vocab size now:", len(tokenizer))
+        print("[TOKENIZER] Tokenize sanity check:", tokenizer.tokenize(test_str))
+
 
     # 5) Loaders
     print("\n[STEP 5] Building DataLoaders...")
@@ -453,6 +490,8 @@ def main():
         print(f"[DEVICE] GPU: {torch.cuda.get_device_name(0)}")
 
     model = build_model(MODEL_NAME, num_labels=len(label_encoder.classes_), device=device)
+    # IMPORTANTÍSIMO: para que el modelo tenga embeddings para los tokens nuevos
+    model.resize_token_embeddings(len(tokenizer))
     optimizer = build_optimizer(model, lr=LR)
 
     # 7) Entrenar
@@ -508,6 +547,11 @@ def main():
 
     exp_meta = {
         "Model": MODEL_NAME,
+        "Mode": mode,
+        "Added_special_tokens_joined": "|".join(specials),
+        "Num_added_special_tokens": len(specials),
+        "Tokenizer_vocab_size": len(tokenizer),
+       
         "Max_len": MAX_LEN,
         "Batch_size": BATCH_SIZE,
         "LR": LR,
@@ -530,7 +574,7 @@ def main():
 
     # nombre Excel 
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_en_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"BERT_en_{mode}_{task_name}.xlsx")
 
     save_results_excel(
         out_xlsx,
