@@ -6,14 +6,14 @@ from sklearn.model_selection import train_test_split
 # =========================
 # CONFIG
 # =========================
-TFIDF = True  # True -> quita puntuación/dígitos (TF-IDF). False -> deja más “natural” (mejor para e5)
+TFIDF = False  # True -> quita puntuación/dígitos (TF-IDF). False -> deja más “natural” (mejor para e5)
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 MIN_TEXT_LEN = 60  # mínimo de caracteres (después de limpiar)
 
 # === Elige UN SOLO dataset (un único .jsonl) ===
 
-DATASET_NAME = "WLS"  # para nombrar los ficheros de salida
+DATASET_NAME = "Pitt"  # para nombrar los ficheros de salida
 INPUT_JSONL = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/{DATASET_NAME}.jsonl"
 
 OUTPUT_DIRECTORY = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"
@@ -175,12 +175,12 @@ print(f"\nSplit realizado: train={len(train_df)} | test={len(test_df)}")
 # =========================
 # SAVE
 # =========================
-train_out = os.path.join(OUTPUT_DIRECTORY, f"train_{DATASET_NAME.lower()}_english.jsonl")
-test_out = os.path.join(OUTPUT_DIRECTORY, f"test_{DATASET_NAME.lower()}_english.jsonl")
+train_out = os.path.join(OUTPUT_DIRECTORY, f"train_{DATASET_NAME.lower()}.jsonl")
+#test_out = os.path.join(OUTPUT_DIRECTORY, f"test_{DATASET_NAME.lower()}_english.jsonl")
 
 train_df.to_json(train_out, orient="records", lines=True, force_ascii=False)
-test_df.to_json(test_out, orient="records", lines=True, force_ascii=False)
+#test_df.to_json(test_out, orient="records", lines=True, force_ascii=False)
 
 print("\nGuardado:")
 print(" -", train_out)
-print(" -", test_out)
+#print(" -", test_out)

@@ -7,28 +7,12 @@ from ollama import chat
 BASIC=False
 
 # --- CONFIGURACIÓN DE RUTAS ---
-INPUT_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Pitt.jsonl"
-OUTPUT_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/Pitt_Sintetico.jsonl"
-
-# --- LIMPIAR DIAGNÓSTICO DEL PITT ---
-def clean_diagnosis(df):
-    diagnoses_to_remove = ['Vascular', 'Memory', 'Aphasia', "Pick's", 'Other']
-    df = df[~df['Diagnosis'].isin(diagnoses_to_remove)]
-    df = df[df['Diagnosis'].notna() & (df['Diagnosis'] != '')]
-    
-    df['Diagnosis'] = df['Diagnosis'].replace({
-        'Control': 'HC', 'Conrol': 'HC', 'NC': 'HC', 'H': 'HC',
-        'AD': 'Dementia', 'DM': 'Dementia', 'PossibleAD': 'Dementia',
-        'ProbableAD': 'Dementia', 'Probable': 'Dementia',
-        'potential dementia': 'Dementia', 'D': 'Dementia',
-        "Alzheimer's": 'Dementia'
-    })
-    return df
+INPUT_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_pitt.jsonl"
+OUTPUT_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/pitt_sintetico.jsonl"
 
 # --- CARGAR DATOS QUE NOS INTERESAN DEL PITT
 def cargar_datos(ruta):
     df = pd.read_json(ruta, lines=True)
-    df = clean_diagnosis(df)
     df['MMSE'] = pd.to_numeric(df['MMSE'], errors='coerce')
     df['Age'] = pd.to_numeric(df['Age'], errors='coerce')
     return df.dropna(subset=['MMSE', 'Age', 'Text_interviewer_participant', 'Diagnosis'])
@@ -117,6 +101,7 @@ def generar_chat_pitt_dialogo(target, vecinos):
         print(f"Error: {e}")
         return None
 
+'''
 # --- EJECUCIÓN (MODO PRINT PARA VERIFICAR) ---
 print(f"--- INICIANDO PROCESO MEJORADO ---")
 df_real = cargar_datos(INPUT_PATH)
@@ -141,5 +126,80 @@ for i, perfil in enumerate(perfiles_nuevos, 1):
         print(f"\n--- GENERACIÓN ---")
         print(texto_sintetico)
         print(f"------------------")
+'''
+
+# --- 1. NUEVA FUNCIÓN: ANÁLISIS ESTADÍSTICO ---
+def analizar_estadisticas(df):
+    """
+    Calcula estadísticas descriptivas para Edad y MMSE agrupadas por Diagnóstico.
+    Devuelve un DataFrame con índices jerárquicos (Diagnosis -> Metrica).
+    """
+    # Agrupamos por diagnóstico y pedimos 'describe' de las columnas de interés
+    stats = df.groupby('Diagnosis')[['Age', 'MMSE']].describe()
+    
+    print("\n" + "="*60)
+    print("ESTUDIO ESTADÍSTICO DEL DATASET PITT (DementiaBank)")
+    print("="*60)
+    
+    # Formateamos para que se lea bien en consola
+    pd.options.display.float_format = '{:,.2f}'.format
+    print(stats)
+    print("="*60 + "\n")
+    
+    return stats
+
+# --- 2. GENERADOR DE PERFILES BASADO EN ESTADÍSTICA ---
+def generar_targets_estadisticos(stats, diagnosis, n_samples=10):
+    """
+    Genera perfiles sintéticos muestreando de una distribución Normal 
+    basada en la media y desviación estándar del grupo real.
+    """
+    if diagnosis not in stats.index:
+        print(f"Error: El diagnóstico '{diagnosis}' no existe en el dataset.")
+        return []
+
+    # Extraemos las métricas del grupo
+    age_mean = stats.loc[diagnosis, ('Age', 'mean')]
+    age_std  = stats.loc[diagnosis, ('Age', 'std')]
+    age_min  = stats.loc[diagnosis, ('Age', 'min')]
+    age_max  = stats.loc[diagnosis, ('Age', 'max')]
+
+    mmse_mean = stats.loc[diagnosis, ('MMSE', 'mean')]
+    mmse_std  = stats.loc[diagnosis, ('MMSE', 'std')]
+    mmse_min  = stats.loc[diagnosis, ('MMSE', 'min')]
+    mmse_max  = stats.loc[diagnosis, ('MMSE', 'max')]
+
+    perfiles = []
+    
+    for _ in range(n_samples):
+        # Generamos Edad aleatoria (distribución normal)
+        # np.random.normal(media, desviacion)
+        gen_age = np.random.normal(age_mean, age_std)
+        # Cliping: Aseguramos que no salga un valor imposible (ej. 150 años)
+        # Usamos los min/max reales del dataset como límites lógicos
+        gen_age = max(age_min, min(age_max, gen_age))
+
+        # Generamos MMSE aleatorio (distribución normal)
+        gen_mmse = np.random.normal(mmse_mean, mmse_std)
+        # Cliping: MMSE debe estar entre 0 y 30
+        # También respetamos los límites reales vistos en los datos
+        gen_mmse = max(0, min(30, gen_mmse)) 
+
+        # Crear perfil
+        perfiles.append({
+            'Age': int(round(gen_age)),
+            'MMSE': int(round(gen_mmse)),
+            'Diagnosis': diagnosis,
+            # Asignamos género aleatorio 50/50 o basado en proporción real si quisieras hilar más fino
+            'Gender': np.random.choice(['female', 'male']) 
+        })
+        
+    return perfiles
+
+df_real = cargar_datos(INPUT_PATH)
+
+# 2. ESTUDIO ESTADÍSTICO PREVIO
+# Esto imprimirá la tabla con count, mean, std, min, 25%, 50%, 75%, max
+stats_df = analizar_estadisticas(df_real)
 
 print(f"\n--- PROCESO FINALIZADO ---")
