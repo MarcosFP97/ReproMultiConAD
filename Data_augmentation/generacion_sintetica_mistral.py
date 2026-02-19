@@ -3,21 +3,36 @@ import sys
 import math
 import logging
 import json
-import re
 from pathlib import Path
+from typing import Any
 import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
-from ollama import chat
 
-from transformers import AutoTokenizer
+try:
+    from prompt_system import (
+        PROMPT_REGISTRY,
+        get_prompt_spec,
+        validate_generated_text,
+        self_check_prompt_specs,
+        generar_dialogo_paciente_prompt,
+    )
+except ImportError:
+    from Data_augmentation.prompt_system import (
+        PROMPT_REGISTRY,
+        get_prompt_spec,
+        validate_generated_text,
+        self_check_prompt_specs,
+        generar_dialogo_paciente_prompt,
+    )
 
 # Configurar logs de transformers para que no sean molestos
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
+parser.add_argument('--self_check', action='store_true')
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
 
@@ -32,15 +47,32 @@ SAVE = True
 K_NEIGHBORS = 3
 RANDOM_SEED = 42
 
-# --- CARGA DEL TOKENIZADOR (Global) ---
-print("Cargando tokenizador de Mistral...")
-try:
-    # Usamos el tokenizer de Mistral-7B-Instruct-v0.2 que comparte vocabulario con Mistral Small y es menos pesado
-    # Si no tienes internet en el nodo de cómputo, asegúrate de tener esto en caché o descárgalo localmente
-    TOKENIZER = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
-except Exception as e:
-    sys.exit(f"Error cargando tokenizer (asegúrate de tener internet o el modelo en caché): {e}")
+TOKENIZER: Any = None
 
+# =========== TOKENIZER PARA TENER EN CUENTA LA VENTANA DE CONTEXTO DEL LLM =========== #
+def get_tokenizer():
+    """Carga diferida del tokenizador para evitar dependencias en el self-check."""
+    global TOKENIZER
+    if TOKENIZER is None:
+        print("Cargando tokenizador de Mistral...")
+        try:
+            from transformers import AutoTokenizer
+            # Usamos el tokenizer de Mistral-7B-Instruct-v0.2 que comparte vocabulario con Mistral Small y es menos pesado
+            # Si no tienes internet en el nodo de cómputo, asegúrate de tener esto en caché o descárgalo localmente
+            TOKENIZER = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
+        except Exception as e:
+            sys.exit(f"Error cargando tokenizer (asegúrate de tener internet o el modelo en caché): {e}")
+    return TOKENIZER
+
+def contar_tokens_reales(texto: str) -> int:
+    """Cuenta tokens EXACTOS usando el tokenizer de Mistral."""
+    if not texto:
+        return 0
+    tokenizer = get_tokenizer()
+    # encode devuelve los IDs, su longitud es el número de tokens
+    return len(tokenizer.encode(texto, add_special_tokens=False))
+
+# =========== CARGAR DATOS Y ANALIZAR ESTADÍSTICAS DEL DATASET =========== #
 def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
     """Carga el JSONL y deja solo las columnas necesarias para el pipeline."""
     df = pd.read_json(ruta, lines=True)
@@ -64,13 +96,6 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
     print(f"[INFO] Filas raw: {len(df)} | Filas pipeline: {len(df_filtrado)}")
 
     return df_filtrado, conteo_diagnosticos_raw
-
-def contar_tokens_reales(texto: str) -> int:
-    """Cuenta tokens EXACTOS usando el tokenizer de Mistral."""
-    if not texto:
-        return 0
-    # encode devuelve los IDs, su longitud es el número de tokens
-    return len(TOKENIZER.encode(texto, add_special_tokens=False))
 
 def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> tuple[pd.DataFrame, int]:
     """
@@ -267,6 +292,7 @@ def plot_relacion_age_mmse(df: pd.DataFrame, out_dir: Path | None = None) -> Non
         plt.ylim(-0.5, 30.5)
         plt.savefig(out_dir / f"rel_age_mmse_{diag}.png", dpi=200, bbox_inches="tight")
 
+# =========== LÓGICA DEL PROGRAMA : GENERACIÓN DEL TARGET A GENERAR, BÚSQUEDA DE SUS VECINOS Y GENERACIÓN DEL DIÁLOGO SINTÉTICO =========== #
 def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: str, n_samples: int, seed: int,) -> list[dict]:
     """
     Genera perfiles sintéticos SOLO para un diagnóstico:
@@ -346,8 +372,9 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
     # Normalización Min-Max para el cálculo de distancias
     norm_target = {}
     for col in ["Age", "MMSE"]:
-        c_min = df_filtrado[col].min()
-        c_max = df_filtrado[col].max()
+        # Para la Normalización tenemos en cuenta los valores en el dataset real, para no restringir tantos valores
+        c_min = df_real[col].min()
+        c_max = df_real[col].max()
 
         # Si max=min, toda la columna es constante; fijamos 0.5 para todos.
         if c_max == c_min:
@@ -365,125 +392,26 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     return df_filtrado.sort_values("dist").head(k)
 
-def validate_chat(texto: str | None) -> bool:
-    """
-    Validacion minima CHAT:
-    - Debe empezar con *INV: o *PAR:
-    - Debe tener al menos una linea *INV: y una *PAR:
-    """
-    if not texto:
-        return False
+def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFrame, ctx_size: int) -> str | None:
+    """Wrapper de compatibilidad: delega en el módulo de prompt system."""
+    tokenizer = get_tokenizer()
+    return generar_dialogo_paciente_prompt(
+        dataset_name=dataset_name,
+        target=target,
+        vecinos=vecinos,
+        ctx_size=ctx_size,
+        basic=BASIC,
+        model_name=MODEL_NAME,
+        tokenizer=tokenizer,
+    )
 
-    lines = [l.strip() for l in texto.strip().splitlines() if l.strip()]
-    if not lines:
-        return False
-
-    if not re.match(r"^\*(INV|PAR):", lines[0]):
-        return False
-    
-    # Verificar códigos de tiempo prohibidos
-    if "\x15" in texto or re.search(r"\x15\d+_\d+\x15", texto):
-        return False
-    
-    # Rechazar code / markdown / notebooks
-    if "```" in texto:
-        return False
-    if re.search(r"\.ipynb\b|%matplotlib\b|\bimport\b|\bdef\b|\bclass\b|\btensorflow\b", texto):
-        return False
-    if re.search(r"^\+{3,}", texto, flags=re.MULTILINE):
-        return False
-
-    has_inv = any(l.startswith("*INV:") for l in lines)
-    has_par = any(l.startswith("*PAR:") for l in lines)
-    return has_inv and has_par
-
-def generar_dialogo_paciente(target: dict, vecinos: pd.DataFrame, ctx_size: int) -> str | None:
-    """Construye prompt BASIC/SMART, llama a Ollama con el contexto dinámico y devuelve el texto generado."""
-    bloques = []
-    
-    # Calcular límite de caracteres seguro por vecino basado en el contexto disponible
-    # Aproximación inversa: 1 token ~ 3-4 chars. Restamos prompt y dividimos por 3.
-    # Es solo un truncado de emergencia extrema.
-    chars_avail_per_neighbor = int(((ctx_size - 2000) / 3) * 3.5)
-    
-    for i, r in enumerate(vecinos.itertuples(index=False), 1):
-        text_safe = str(r.Text_interviewer_participant)#[:chars_avail_per_neighbor]
-        bloques.append(
-            f"--- Neighbor {i} | Diagnosis: {r.Diagnosis} | Age: {r.Age} | MMSE: {r.MMSE} | Gender: {r.Gender} ---\n"
-            f"{text_safe}"
-        )
-    selected_transcripts = "\n\n".join(bloques)
-
-    if BASIC:
-        prompt_user = f"""
-            Based on these similar transcripts:
-
-            {selected_transcripts}
-
-            Generate a new Pitt CHAT transcript for:
-            Diagnosis: {target['Diagnosis']}
-            Age: {target['Age']}
-            MMSE: {target['MMSE']}
-            Gender: {target['Gender']}
-            """.strip()
-        messages = [{"role": "user", "content": prompt_user}]
-    else:
-        prompt_system = (
-            "You generate synthetic Pitt Corpus dialogues in CHAT format. "
-            "Output only turns from interviewer (*INV:) and participant (*PAR:)."
-        )
-        prompt_user = f"""
-            Use these neighbors as style anchors:
-
-            {selected_transcripts}
-
-            TARGET:
-            Diagnosis: {target['Diagnosis']}
-            Age: {target['Age']}
-            MMSE: {target['MMSE']}
-            Gender: {target['Gender']}
-
-            Rules:
-            1. Include both speakers.
-            2. MIMIC the broken speech patterns found in the neighbors (do not correct grammar).
-            3. YOU MUST INCLUDE CHAT CODES if the neighbors have them. Examples :
-            - Pauses: (.) or (..)
-            - Repetitions: [/] (e.g., "the [/] the cookie")
-            - Revisions: [//] (e.g., "girl [//] boy")
-            - Fillers: &-uh, &-um
-            4. Keep Cookie Theft context.
-            5. CRITICAL: DO NOT include time alignment bullets (e.g., \x15123_456\x15). Since this is synthetic text without audio, time codes are invalid.
-            """.strip()
-        messages = [
-            {"role": "system", "content": prompt_system},
-            {"role": "user", "content": prompt_user},
-        ]
-
-    # AQUI SE AÑADE LA TEMPERATURA
-    options={
-        'temperature': 1.0,  # Aumenta la creatividad/variedad
-        'repeat_penalty': 1.1, # Opcional: Ayuda extra si sigue repitiendo bucles
-        'num_ctx': ctx_size  # CONTEXTO EXACTO
-    }
-    
-    # Imprimir prints de tokens
-    system_txt = next((m["content"] for m in messages if m["role"] == "system"), "")
-    user_txt   = next((m["content"] for m in messages if m["role"] == "user"), "")
-
-    sys_tok  = len(TOKENIZER.encode(system_txt, add_special_tokens=False))
-    usr_tok  = len(TOKENIZER.encode(user_txt, add_special_tokens=False))
-    both_txt = system_txt + "\n" + user_txt
-    tot_tok  = len(TOKENIZER.encode(both_txt, add_special_tokens=False))
-
-    print(f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok} | ctx={ctx_size}")
-    
-    response = chat(model=MODEL_NAME, messages=messages, options=options)
-    return response.message.content.strip()
-
+# =========== PROGRAMA PRINCIPAL =========== #
 def main() -> None:
     print("Cargando datos...")
     # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
     df_real, conteo_raw = cargar_datos(INPUT_PATH)
+    prompt_spec = get_prompt_spec(dataset)
+    print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
     
     # Plot de distribuciones 
     # plot_distribuciones_por_diagnostico(df_real)
@@ -528,12 +456,12 @@ def main() -> None:
                     print(f"Descartado (sin vecinos): {target}")
                     continue
 
-                generated_text = generar_dialogo_paciente(target, vecinos, recommended_ctx)
-                
-                # --- VALIDACIÓN CHAT ---
-                if not validate_chat(generated_text):
+                generated_text = generar_dialogo_paciente(dataset, target, vecinos, recommended_ctx)
+
+                # --- VALIDACIÓN DATASET-AWARE ---
+                if not validate_generated_text(generated_text, prompt_spec):
                     batch_bad += 1
-                    print(f"Descartado (CHAT invalido): {target}")
+                    print(f"Descartado (texto inválido para dataset='{dataset}'): {target}")
                     continue
 
                 # --- SI LLEGA AQUÍ, ES VÁLIDO ---
@@ -573,4 +501,7 @@ def main() -> None:
     print("Proceso finalizado.") 
     
 if __name__ == "__main__":
-    main()
+    if args_slurm.self_check:
+        self_check_prompt_specs()
+    else:
+        main()
