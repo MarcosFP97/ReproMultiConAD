@@ -252,17 +252,25 @@ def build_enricher(path_to_cha_files):
         loader = VASLoader()
         metadata = loader.load_metadata()
         return VASEnricher(metadata)
+    
+    elif "Ivanova" in path_to_cha_files:
+        from Metadata_integration.Loaders.Ivanova_loader import IvanovaLoader
+        from Metadata_integration.Enrichers.Ivanova_enricher import IvanovaEnricher
+
+        loader = IvanovaLoader()
+        metadata = loader.load_metadata()
+        return IvanovaEnricher(metadata)
 
     else:
         return None  # datasets sin metadata externa
   
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
+path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Kempler" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Lu" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/PerLA" # path to the folder containing .cha files
-path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
+#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files 
 #path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files 
 
@@ -270,8 +278,8 @@ if __name__ == '__main__':
     
     enricher = build_enricher(path_to_cha_files)
     
-    collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
-    #collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
+    #collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
+    collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
     #collection = CHACollection(path_to_cha_files,language="chinese",enricher=enricher) #NOTE De momento no usamos el chino para nuestro experimento    
     
     # Making the file name for the output file

@@ -14,25 +14,29 @@ from tqdm import tqdm
 
 
 # ============================================================
-# CONFIG (cambia aquí lo que necesites)
+# CONFIG
 # ============================================================
 
-TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
-TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
-OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
+#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
+#TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
+#OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
+
+TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_synthetic.jsonl"
+TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_ivanova.jsonl"
+OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_ivanova_patient_classifier_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
-MODEL_NAME = "bert-base-uncased"
-#MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+#MODEL_NAME = "bert-base-uncased"
+MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario, como ya estabas haciendo
-VERBOSE = True             # ponlo en False si quieres menos prints
+DROP_LABEL_VALUE = None   # quitamos MCI para binario
+VERBOSE = True             # False si queremos menos prints
 
 
 # ============================================================
@@ -415,8 +419,8 @@ def main():
 
     # 1) Cargar datos
     print("\n[STEP 1] Loading train/test data (jsonl) and selecting needed columns...")
-    train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, drop_label_value=DROP_LABEL_VALUE)
-    test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, drop_label_value=DROP_LABEL_VALUE)
+    train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
+    test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
 
     # 2) Label encoding
@@ -528,9 +532,9 @@ def main():
         exp_meta=exp_meta
     )
 
-    # nombre Excel 
+    ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_en_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"BERT_Ivanova_Sintetico_{task_name}.xlsx")
 
     save_results_excel(
         out_xlsx,

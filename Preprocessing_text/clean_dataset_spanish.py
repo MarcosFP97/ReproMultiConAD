@@ -13,7 +13,7 @@ TEST_OUT  = f"{OUTPUT_DIR}/test_ivanova.jsonl"
 
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
-TFIDF = True
+TFIDF = False
 
 # LÍMITES SOLO PARA IVANOVA
 MIN_WORDS = 40

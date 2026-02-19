@@ -13,8 +13,8 @@ MIN_TEXT_LEN = 60  # mínimo de caracteres (después de limpiar)
 
 # === Elige UN SOLO dataset (un único .jsonl) ===
 
-DATASET_NAME = "Pitt"  # para nombrar los ficheros de salida
-INPUT_JSONL = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/{DATASET_NAME}.jsonl"
+DATASET_NAME = "taukadial"  # para nombrar los ficheros de salida
+INPUT_JSONL = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/{DATASET_NAME}_English_test.jsonl"
 
 OUTPUT_DIRECTORY = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
@@ -154,7 +154,7 @@ print(df["Diagnosis"].value_counts(dropna=False))
 # Preprocesado de texto
 df["Text_interviewer_participant"] = df["Text_interviewer_participant"].apply(preprocess_text)
 
-# Filtrar por longitud (elige la que uses para modelar; aquí usamos interviewer+participant)
+# Filtrar por longitud 
 df = remove_short_transcripts(df, "Text_interviewer_participant", min_length=MIN_TEXT_LEN)
 
 print("\nDistribución Diagnosis (después de filtrar por longitud):")
@@ -163,24 +163,24 @@ print(df["Diagnosis"].value_counts(dropna=False))
 # =========================
 # TRAIN/TEST SPLIT (estratificado)
 # =========================
-train_df, test_df = train_test_split(
-    df,
-    test_size=TEST_SIZE,
-    stratify=df["Diagnosis"],
-    random_state=RANDOM_STATE
-)
+#train_df, test_df = train_test_split(
+#    df,
+#    test_size=TEST_SIZE,
+#    stratify=df["Diagnosis"],
+#    random_state=RANDOM_STATE
+#)
 
-print(f"\nSplit realizado: train={len(train_df)} | test={len(test_df)}")
+#print(f"\nSplit realizado: train={len(train_df)} | test={len(test_df)}")
 
 # =========================
 # SAVE
 # =========================
-train_out = os.path.join(OUTPUT_DIRECTORY, f"train_{DATASET_NAME.lower()}.jsonl")
-#test_out = os.path.join(OUTPUT_DIRECTORY, f"test_{DATASET_NAME.lower()}_english.jsonl")
+#train_out = os.path.join(OUTPUT_DIRECTORY, f"train_{DATASET_NAME.lower()}.jsonl")
+test_out = os.path.join(OUTPUT_DIRECTORY, f"test_{DATASET_NAME.lower()}.jsonl")
 
-train_df.to_json(train_out, orient="records", lines=True, force_ascii=False)
-#test_df.to_json(test_out, orient="records", lines=True, force_ascii=False)
+#train_df.to_json(train_out, orient="records", lines=True, force_ascii=False)
+df.to_json(test_out, orient="records", lines=True, force_ascii=False)
 
 print("\nGuardado:")
-print(" -", train_out)
-#print(" -", test_out)
+#print(" -", train_out)
+print(" -", test_out)
