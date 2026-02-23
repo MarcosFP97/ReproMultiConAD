@@ -21,7 +21,7 @@ from tqdm import tqdm
 #TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
 #OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
 
-TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_synthetic.jsonl"
+TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_augmented.jsonl"
 TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_ivanova.jsonl"
 OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_ivanova_patient_classifier_len256"
 
@@ -412,6 +412,23 @@ def save_results_excel(
 # ============================================================
 # MAIN
 # ============================================================
+import re
+
+def limpiar_texto_chat(texto: str) -> str:
+    """Elimina los códigos de tiempo de CHAT y limpia espacios extra."""
+    if not isinstance(texto, str):
+        return ""
+    
+    # Busca el carácter \x15 o el símbolo , seguido de números y guiones bajos, y el cierre
+    texto_limpio = re.sub(r'[\x15][0-9_]+[\x15]', ' ', texto)
+    
+    # También podemos limpiar las marcas de speaker si tu sintético no las tiene en el mismo formato
+    # texto_limpio = re.sub(r'^\*?(PAR|INV):\s*', '', texto_limpio, flags=re.MULTILINE)
+    
+    # Eliminar espacios dobles que quedan al quitar los códigos
+    texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
+    return texto_limpio
+
 def main():
     print("========== BERT TEXT CLASSIFICATION PIPELINE ==========")
     
@@ -422,12 +439,17 @@ def main():
     train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
+    
+    # Aplica la limpieza a tus dos DataFrames ANTES de pasarlos al tokenizador de BERT
+    print("[PREPROCESO] Limpiando códigos de tiempo del dataset Real...")
+    train_df['Text_interviewer_participant'] = train_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
+    test_df['Text_interviewer_participant'] = test_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
 
     # 2) Label encoding
     print("\n[STEP 2] Label encoding using TRAIN only...")
     train_df, label_encoder = encode_labels_fit(train_df, label_col=LABEL_COL)
     test_df = encode_labels_transform(test_df, label_col=LABEL_COL, label_encoder=label_encoder)
-
+    
     # 3) Split train/val
     print("\n[STEP 3] Splitting TRAIN into train/val...")
     train_texts, val_texts, train_labels, val_labels = split_train_val(train_df, text_col=TEXT_COL)
@@ -534,7 +556,7 @@ def main():
 
     ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_Ivanova_Sintetico_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"BERT_Ivanova_Augmented_{task_name}_no_timestamps.xlsx")
 
     save_results_excel(
         out_xlsx,

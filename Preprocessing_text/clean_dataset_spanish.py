@@ -65,6 +65,25 @@ def preprocess_text(text: str) -> str:
 
     return text
 
+def clean_gender(df):
+    if "Gender" not in df.columns:
+        return df
+
+    df["Gender"] = df["Gender"].astype(str).str.strip().str.lower()
+
+    df["Gender"] = df["Gender"].replace({
+        "m": "M",
+        "male": "M",
+        "f": "F",
+        "female": "F",
+        "w": "F",
+        "nan": "U",
+        "none": "U",
+        "": "U"
+    })
+
+    df.loc[~df["Gender"].isin(["M", "F"]), "Gender"] = "U"
+    return df
 
 def trim_by_word_limits(text: str, min_words: int, max_words: int):
     words = str(text).split()
@@ -83,6 +102,7 @@ df = pd.read_json(INPUT_FILE, lines=True)
 # Normaliza etiquetas de diagnóstico (si aplica)
 df = df.copy()
 df["Diagnosis"] = df["Diagnosis"].replace({"DTA": "Dementia", "AD": "Dementia"})
+df = clean_gender(df)
 
 # Filtra diagnosis vacías/unknown
 df = df[df["Diagnosis"].notnull()].copy()

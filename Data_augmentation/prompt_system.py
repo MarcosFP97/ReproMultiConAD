@@ -233,13 +233,16 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:" (sin "*PAR:" y sin "PAR :").',
             "No incluyas entrevistador ni otros speakers; no agregues prosa fuera de las líneas del transcript.",
             "La salida debe estar en español.",
-            "El pasaje obligatorio debe aparecer literal y en el mismo orden, exactamente una vez.",
+            "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
             "Modela el nivel cognitivo/fluidez según vecinos: mayor capacidad = lectura más fluida; menor capacidad = más vacilaciones, repeticiones, reparaciones, sustituciones, omisiones y reinicios.",
-            "No cambies el pasaje obligatorio; representa errores con marcas tipo CHAT y comportamientos de lectura alrededor del pasaje.",
+            "No cambies el pasaje obligatorio; los errores solo pueden aparecer como disfluencias y marcas CHAT *alrededor* del pasaje, sin alterar su texto.",
             "Imita el estilo de disfluencias de los vecinos si existe ((.), (..), [/], [//], &-eh, &-em, etc.) y evita inventar estilos ajenos salvo mínimo necesario.",
             "CRITICAL: prohibidos símbolos de alineación temporal (\\x15 o patrones \\x15...\\x15).",
+            "FORMATO/CONTROL: produce entre 2 y 6 líneas PAR: y termina. No añadas líneas extra.",
+            "ANTI-LOOP: no repitas el pasaje ni vuelvas a recitarlo; no repitas secuencias largas (>8 palabras) del pasaje.",
             "Prohibidos markdown/code fences, headings, listas, explicaciones y artefactos de notebook/código.",
         ),
+
         neighbor_header_template="--- Vecino {i} | Diagnostico: {Diagnosis} | Edad: {Age} | MMSE: {MMSE} | Genero: {Gender} ---",
         validators=(
             validate_required_roles,
@@ -261,12 +264,16 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
 
             Salida estricta:
             1. Solo líneas con prefijo exacto "PAR:".
-            2. Debe incluir este pasaje literal exactamente una vez:
+            2. Debe incluir este pasaje una vez:
             "{required_passage}"
             3. Mimetiza la fluidez/disfluencia según los vecinos.
             """.strip(),
         ollama_options={
-            "temperature": 0.5,
+            "temperature": 0.25,
+            "num_predict": 150,
+            "repeat_penalty": 1.25,
+            "top_p": 0.9,
+            "top_k": 40,
         },
                 ),
     # DEFAULT

@@ -10,22 +10,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-try:
-    from prompt_system import (
-        PROMPT_REGISTRY,
-        get_prompt_spec,
-        validate_generated_text,
-        self_check_prompt_specs,
-        generar_dialogo_paciente_prompt,
-    )
-except ImportError:
-    from Data_augmentation.prompt_system import (
-        PROMPT_REGISTRY,
-        get_prompt_spec,
-        validate_generated_text,
-        self_check_prompt_specs,
-        generar_dialogo_paciente_prompt,
-    )
+from prompt_system import (
+    PROMPT_REGISTRY,
+    get_prompt_spec,
+    validate_generated_text,
+    self_check_prompt_specs,
+    generar_dialogo_paciente_prompt
+)
+
 
 # Configurar logs de transformers para que no sean molestos
 logging.getLogger("transformers").setLevel(logging.ERROR)
@@ -33,12 +25,13 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
 parser.add_argument('--self_check', action='store_true')
+parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
 
 # Configuracion basica
 INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/{dataset}_synthetic.jsonl")
+OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/{dataset}_augmented.jsonl")
 MODEL_NAME = "mistral-small"
 
 BASIC = False
@@ -87,12 +80,12 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
         df.dropna(subset=["Diagnosis"])["Diagnosis"].value_counts().to_dict()
     )
 
-    # Filtrado para el pipeline (lo que ya hacías)
+    # Filtrado para el pipeline
     df_filtrado = df.dropna(
         subset=["Text_interviewer_participant", "Diagnosis", "Age", "MMSE"]
     ).copy()
 
-    # (opcional) debug para ver cuánto se pierde
+    # debug para ver cuánto se pierde
     print(f"[INFO] Filas raw: {len(df)} | Filas pipeline: {len(df_filtrado)}")
 
     return df_filtrado, conteo_diagnosticos_raw
@@ -413,6 +406,16 @@ def main() -> None:
     prompt_spec = get_prompt_spec(dataset)
     print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
     
+    if args_slurm.augmented:
+        max_class_count = max(conteo_raw.values())
+        print(f"\n[AUGMENTED MODE ACTIVADO] Balanceando todas las clases a {max_class_count} muestras totales (Reales + Sintéticas).")
+        
+        # Calculamos cuántas SINTÉTICAS faltan para llegar al máximo
+        for diag, count_real in conteo_raw.items():
+            faltantes = max_class_count - count_real
+            conteo_raw[diag] = faltantes
+            print(f"  -> {diag}: {count_real} reales. Generaremos {faltantes} sintéticas.")
+    
     # Plot de distribuciones 
     # plot_distribuciones_por_diagnostico(df_real)
     # plot_relacion_age_mmse(df_real)
@@ -428,6 +431,10 @@ def main() -> None:
         writer = OUTPUT_PATH.open("a", encoding="utf-8")
     
     for diag_objetivo, n_objetivo in conteo_raw.items():
+        
+        if n_objetivo <= 0:
+            print(f"\n>>> SALTANDO DIAGNÓSTICO: {diag_objetivo} | Ya tiene el máximo de muestras.")
+            continue
         
         print(f"\n>>> PROCESANDO DIAGNÓSTICO: {diag_objetivo} | META: {n_objetivo} muestras")
         samples_needed = n_objetivo 
