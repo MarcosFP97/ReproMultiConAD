@@ -24,14 +24,19 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
+parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 20, 40, 60, 80)")
 parser.add_argument('--self_check', action='store_true')
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
+slice_pct = args_slurm.slice
+
+if slice_pct <= 0 or slice_pct > 100:
+    parser.error("--slice debe estar en el rango 1..100")
 
 # Configuracion basica
-INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/{dataset}_augmented.jsonl")
+INPUT_PATH = Path(f"Data_Augmentation/train_{dataset}_{slice_pct}.jsonl")
+OUTPUT_PATH = Path(f"Data_Augmentation/train_{dataset}_{slice_pct}_synthetic.jsonl")
 MODEL_NAME = "mistral-small"
 
 BASIC = False
@@ -406,15 +411,20 @@ def main() -> None:
     prompt_spec = get_prompt_spec(dataset)
     print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
     
-    if args_slurm.augmented:
-        max_class_count = max(conteo_raw.values())
-        print(f"\n[AUGMENTED MODE ACTIVADO] Balanceando todas las clases a {max_class_count} muestras totales (Reales + Sintéticas).")
-        
-        # Calculamos cuántas SINTÉTICAS faltan para llegar al máximo
+    if args_slurm.slice < 100:
+        y_pct = 100 - args_slurm.slice
+        print(f"\n[LOW-RESOURCE MODE] Slice del {args_slurm.slice}%. Se generará el {y_pct}% faltante por clase.")
         for diag, count_real in conteo_raw.items():
-            faltantes = max_class_count - count_real
-            conteo_raw[diag] = faltantes
-            print(f"  -> {diag}: {count_real} reales. Generaremos {faltantes} sintéticas.")
+            muestras_a_generar = int(count_real * (y_pct / args_slurm.slice))
+            conteo_raw[diag] = muestras_a_generar
+            print(
+                f"Slice del {args_slurm.slice}%. {diag} tiene {count_real} reales. "
+                f"Generando el {y_pct}% restante: {muestras_a_generar} sintéticas."
+            )
+    else:
+        print("\n[LOW-RESOURCE MODE] Slice del 100%. No se generan muestras sintéticas.")
+        for diag in list(conteo_raw.keys()):
+            conteo_raw[diag] = 0
     
     # Plot de distribuciones 
     # plot_distribuciones_por_diagnostico(df_real)
@@ -428,7 +438,7 @@ def main() -> None:
     writer = None
     if SAVE:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        writer = OUTPUT_PATH.open("a", encoding="utf-8")
+        writer = OUTPUT_PATH.open("w", encoding="utf-8")
     
     for diag_objetivo, n_objetivo in conteo_raw.items():
         
