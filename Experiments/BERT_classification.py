@@ -1,4 +1,5 @@
 import os
+import argparse
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -21,21 +22,36 @@ from tqdm import tqdm
 #TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
 #OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
 
-TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_augmented.jsonl"
-TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_ivanova.jsonl"
-OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_ivanova_patient_classifier_len256"
+#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_augmented.jsonl"
+
+# Configuración de los argumentos de entrada
+parser = argparse.ArgumentParser(description="Entrenamiento de BERT con slices de datos")
+parser.add_argument("--dataset", type=str, required=True, help="Nombre del dataset (ej: ivanova, pitt)")
+parser.add_argument("--percentage", type=int, required=True, help="Porcentaje del slice (ej: 20, 40, 60, 80)")
+args = parser.parse_args()
+
+# Asignamos los argumentos a variables para usarlas en la config
+dataset = args.dataset
+percentage = args.percentage
+
+TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}_synthetic.jsonl"
+TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_patient_classifier_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
-#MODEL_NAME = "bert-base-uncased"
-MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+if dataset == "ivanova":
+    MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+else:
+    MODEL_NAME = "bert-base-uncased"
+    
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-DROP_LABEL_VALUE = None   # quitamos MCI para binario
+DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
 VERBOSE = True             # False si queremos menos prints
 
 
@@ -556,7 +572,7 @@ def main():
 
     ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_Ivanova_Augmented_{task_name}_no_timestamps.xlsx")
+    out_xlsx = os.path.join(results_dir, f"BERT_Synthetic_{dataset}_{percentage}_{task_name}.xlsx")
 
     save_results_excel(
         out_xlsx,

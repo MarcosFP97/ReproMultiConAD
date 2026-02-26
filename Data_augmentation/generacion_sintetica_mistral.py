@@ -35,8 +35,8 @@ if slice_pct <= 0 or slice_pct > 100:
     parser.error("--slice debe estar en el rango 1..100")
 
 # Configuracion basica
-INPUT_PATH = Path(f"Data_Augmentation/train_{dataset}_{slice_pct}.jsonl")
-OUTPUT_PATH = Path(f"Data_Augmentation/train_{dataset}_{slice_pct}_synthetic.jsonl")
+INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
+OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic.jsonl")
 MODEL_NAME = "mistral-small"
 
 BASIC = False
