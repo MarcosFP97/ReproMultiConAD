@@ -39,6 +39,8 @@ class PromptSpec:
     neighbor_header_template: str
     validators: tuple[ValidatorFn, ...]
     basic_user_template: str | None = None
+    zero_shot_user_template: str | None = None
+    zero_shot_rules: tuple[str, ...] | None = None
     ollama_options: dict[str, Any] = field(default_factory=dict)
 
 
@@ -198,6 +200,28 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             MMSE: {MMSE}
             Gender: {Gender}
             """.strip(),
+        zero_shot_user_template="""
+            TARGET PATIENT:
+
+            Diagnosis: {Diagnosis}
+            Age: {Age}
+            MMSE: {MMSE}
+            Gender: {Gender}
+
+            TASK: Generate a synthetic Pitt Corpus CHAT transcript for the Cookie Theft picture description task.
+
+            Adapt the participant's speech fluency, grammar, and lexical access to strictly match their Diagnosis and MMSE score.
+
+            Rules:
+
+            {rules_block}
+        """.strip(),
+        zero_shot_rules=(
+            "Include both speakers (*INV: and *PAR:).",
+            "MIMIC the cognitive decline",
+            'YOU MUST INCLUDE CHAT CODES to reflect the cognition: Pauses (.) or (..), Repetitions [/], Revisions [//], and Fillers (&-uh, &-um).',
+            "Keep the Cookie Theft picture context",
+        ),
         ollama_options={
             "temperature": 1.0,
         },
@@ -230,7 +254,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             """.strip(),
         roles_required=("PAR:",),
         dataset_rules=(
-            'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:" (sin "*PAR:" y sin "PAR :").',
+            'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:"',
             "No incluyas entrevistador ni otros speakers; no agregues prosa fuera de las líneas del transcript.",
             "La salida debe estar en español.",
             "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
@@ -268,6 +292,37 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             "{required_passage}"
             3. Mimetiza la fluidez/disfluencia según los vecinos.
             """.strip(),
+        zero_shot_user_template="""
+            PACIENTE OBJETIVO:
+
+            Diagnosis: {Diagnosis}
+            Age: {Age}
+            MMSE: {MMSE}
+            Gender: {Gender}
+
+            TAREA:
+
+            Lectura en español de las dos primeras frases de Don Quijote de Cervantes.
+
+            Genera un transcript de cómo leería este paciente exacto el pasaje, adaptando su fluidez a su diagnóstico y puntuación MMSE.
+
+            PASAJE OBLIGATORIO (debe aparecer literal y exactamente una vez):
+
+            "{required_passage}"
+
+            Rules:
+
+            {rules_block}
+        """.strip(),
+        zero_shot_rules=(
+            'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:".',
+            "No incluyas entrevistador ni otros speakers.",
+            "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
+            "MODELA EL NIVEL COGNITIVO EN LA TRANSCRIPCIÓN",
+            "No cambies el pasaje obligatorio; los errores de lectura solo pueden aparecer como disfluencias y marcas CHAT *alrededor* del pasaje.",   
+            "ANTI-LOOP: no repitas el pasaje ni vuelvas a recitarlo.",
+            "Prohibidos markdown/code fences, headings o explicaciones.",
+        ),
         ollama_options={
             "temperature": 0.25,
             "num_predict": 150,
@@ -347,13 +402,18 @@ def format_neighbors(vecinos: pd.DataFrame, spec: PromptSpec) -> str:
     return "\n\n".join(bloques)
 
 
-def build_messages(spec: PromptSpec, target: dict, vecinos: pd.DataFrame, basic: bool = False) -> list[dict]:
+def build_messages(
+    spec: PromptSpec,
+    target: dict,
+    vecinos: pd.DataFrame,
+    basic: bool = False,
+    zero_shot: bool = False,
+) -> list[dict]:
     """Construye mensajes para el modelo usando plantillas del PromptSpec."""
-    selected_transcripts = format_neighbors(vecinos, spec)
-    rules_block = "\n".join(f"{i}. {rule}" for i, rule in enumerate(spec.dataset_rules, 1))
+    rules = spec.zero_shot_rules if zero_shot else spec.dataset_rules
+    rules_block = "\n".join(f"{i}. {rule}" for i, rule in enumerate(rules or (), 1))
 
     fmt_args = {
-        "selected_transcripts": selected_transcripts,
         "Diagnosis": target.get("Diagnosis", ""),
         "Age": target.get("Age", ""),
         "MMSE": target.get("MMSE", ""),
@@ -362,11 +422,16 @@ def build_messages(spec: PromptSpec, target: dict, vecinos: pd.DataFrame, basic:
         "rules_block": rules_block,
     }
 
+    if not zero_shot:
+        fmt_args["selected_transcripts"] = format_neighbors(vecinos, spec)
+
     if basic:
-        prompt_user = (spec.basic_user_template or spec.user_template).format(**fmt_args).strip()
+        user_template = spec.zero_shot_user_template if zero_shot else (spec.basic_user_template or spec.user_template)
+        prompt_user = user_template.format(**fmt_args).strip()
         return [{"role": "user", "content": prompt_user}]
 
-    prompt_user = spec.user_template.format(**fmt_args).strip()
+    user_template = spec.zero_shot_user_template if zero_shot else spec.user_template
+    prompt_user = user_template.format(**fmt_args).strip()
     prompt_system = spec.system_template.format(**fmt_args).strip()
 
     if prompt_system:
@@ -429,10 +494,11 @@ def generar_dialogo_paciente_prompt(
     basic: bool,
     model_name: str,
     tokenizer,
+    zero_shot: bool = False,
 ) -> str | None:
     """Construye prompt dataset-aware, llama a Ollama y devuelve el texto generado."""
     spec = get_prompt_spec(dataset_name)
-    messages = build_messages(spec, target, vecinos, basic=basic)
+    messages = build_messages(spec, target, vecinos, basic=basic, zero_shot=zero_shot)
 
     options = build_ollama_options(spec, ctx_size)
 

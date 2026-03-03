@@ -27,6 +27,7 @@ parser.add_argument('--dataset', required=True)
 parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 20, 40, 60, 80)")
 parser.add_argument('--self_check', action='store_true')
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
+parser.add_argument('--zero-shot', action='store_true', dest='zero_shot', help="Genera sin vecinos en el prompt usando las plantillas zero-shot del dataset")
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
 slice_pct = args_slurm.slice
@@ -95,7 +96,11 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
 
     return df_filtrado, conteo_diagnosticos_raw
 
-def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> tuple[pd.DataFrame, int]:
+def analizar_estadisticas(
+    df: pd.DataFrame,
+    conteo_diagnosticos: dict,
+    zero_shot: bool = False,
+) -> tuple[pd.DataFrame, int]:
     """
     Imprime stats y devuelve:
     1. DataFrame con describe() (stats numéricas).
@@ -157,23 +162,29 @@ def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> tuple[
     p95_tokens = df["real_tokens"].quantile(0.95) 
     
     # Cálculo dinámico del contexto:
-    # (Tokens por vecino * 3) + 
-    # 800 (Prompt sistema + instrucciones) + 
-    # 1000 (Reserva para respuesta generada)
-    estimated_need = (p95_tokens * K_NEIGHBORS) + 1800
+    # - Few-shot: reserva para K vecinos en prompt.
+    # - Zero-shot: no reserva tokens para vecinos.
+    # - En ambos casos mantenemos un colchón fijo para instrucciones + respuesta.
+    prompt_budget = 800
+    response_budget = 1000
+    neighbor_budget = 0 if zero_shot else (p95_tokens * K_NEIGHBORS)
+    estimated_need = neighbor_budget + prompt_budget + response_budget
     
     # Redondeo al bloque de 1024 superior
     recommended_ctx = int(math.ceil(estimated_need / 1024.0)) * 1024
     
     # Mínimo de seguridad
-    if recommended_ctx < 4096:
-        recommended_ctx = 4096
+    min_ctx = 2048 if zero_shot else 4096
+    if recommended_ctx < min_ctx:
+        recommended_ctx = min_ctx
 
     print("\n--- ANÁLISIS DE TOKENS (EXACTO - MISTRAL) ---")
     print(f"Media tokens/transcripción: {avg_tokens:.0f}")
     print(f"Máximo tokens/transcripción: {max_tokens:.0f}")
     print(f"Percentil 95 tokens: {p95_tokens:.0f}")
-    print(f"CONTEXTO RECOMENDADO OLLAMA: {recommended_ctx} tokens")
+    print(f"Presupuesto vecinos en prompt: {neighbor_budget:.0f}")
+    print(f"Reserva fija prompt+respuesta: {prompt_budget + response_budget}")
+    print(f"CONTEXTO RECOMENDADO OLLAMA ({'zero-shot' if zero_shot else 'few-shot'}): {recommended_ctx} tokens")
         
     print("=" * 70 + "\n")
     return stats, recommended_ctx
@@ -390,7 +401,13 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     return df_filtrado.sort_values("dist").head(k)
 
-def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFrame, ctx_size: int) -> str | None:
+def generar_dialogo_paciente(
+    dataset_name: str,
+    target: dict,
+    vecinos: pd.DataFrame,
+    ctx_size: int,
+    zero_shot: bool = False,
+) -> str | None:
     """Wrapper de compatibilidad: delega en el módulo de prompt system."""
     tokenizer = get_tokenizer()
     return generar_dialogo_paciente_prompt(
@@ -401,6 +418,7 @@ def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFr
         basic=BASIC,
         model_name=MODEL_NAME,
         tokenizer=tokenizer,
+        zero_shot=zero_shot,
     )
 
 # =========== PROGRAMA PRINCIPAL =========== #
@@ -409,7 +427,10 @@ def main() -> None:
     # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
     df_real, conteo_raw = cargar_datos(INPUT_PATH)
     prompt_spec = get_prompt_spec(dataset)
+    if args_slurm.zero_shot and prompt_spec.zero_shot_user_template is None:
+        sys.exit(f"El dataset '{dataset}' no define plantillas zero-shot en prompt_system.py")
     print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
+    print(f"[INFO] Modo de generación: {'zero-shot' if args_slurm.zero_shot else 'few-shot'}")
     
     if args_slurm.slice < 100:
         y_pct = 100 - args_slurm.slice
@@ -433,7 +454,11 @@ def main() -> None:
     # plot_distribuciones_objetivo(df_real, DIAG_OBJETIVO)
 
     # Calculamos stats 
-    stats, recommended_ctx = analizar_estadisticas(df_real, conteo_raw)
+    stats, recommended_ctx = analizar_estadisticas(
+        df_real,
+        conteo_raw,
+        zero_shot=args_slurm.zero_shot,
+    )
     
     writer = None
     if SAVE:
@@ -465,15 +490,24 @@ def main() -> None:
             batch_bad = 0
 
             for target in targets:
-                vecinos = buscar_vecinos_knn(target, df_real, k=K_NEIGHBORS)
-                
-                # --- VALIDACIÓN VECINOS ---
-                if vecinos is None or vecinos.empty:
-                    batch_bad += 1
-                    print(f"Descartado (sin vecinos): {target}")
-                    continue
+                if args_slurm.zero_shot:
+                    vecinos = pd.DataFrame()
+                else:
+                    vecinos = buscar_vecinos_knn(target, df_real, k=K_NEIGHBORS)
 
-                generated_text = generar_dialogo_paciente(dataset, target, vecinos, recommended_ctx)
+                    # --- VALIDACIÓN VECINOS ---
+                    if vecinos is None or vecinos.empty:
+                        batch_bad += 1
+                        print(f"Descartado (sin vecinos): {target}")
+                        continue
+
+                generated_text = generar_dialogo_paciente(
+                    dataset,
+                    target,
+                    vecinos,
+                    recommended_ctx,
+                    zero_shot=args_slurm.zero_shot,
+                )
 
                 # --- VALIDACIÓN DATASET-AWARE ---
                 if not validate_generated_text(generated_text, prompt_spec):
@@ -482,7 +516,11 @@ def main() -> None:
                     continue
 
                 # --- SI LLEGA AQUÍ, ES VÁLIDO ---
-                neighbors_meta = vecinos[["Age", "MMSE", "Gender"]].to_dict("records")
+                neighbors_meta = (
+                    []
+                    if args_slurm.zero_shot
+                    else vecinos[["Age", "MMSE", "Gender"]].to_dict("records")
+                )
                 sample = {
                     "Diagnosis": target["Diagnosis"],
                     "Age": target["Age"],
