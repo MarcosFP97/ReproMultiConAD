@@ -27,7 +27,6 @@ parser.add_argument('--dataset', required=True)
 parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 20, 40, 60, 80)")
 parser.add_argument('--self_check', action='store_true')
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
-parser.add_argument('--zero-shot', action='store_true', dest='zero_shot', help="Genera sin vecinos en el prompt usando las plantillas zero-shot del dataset")
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
 slice_pct = args_slurm.slice
@@ -35,10 +34,13 @@ slice_pct = args_slurm.slice
 if slice_pct <= 0 or slice_pct > 100:
     parser.error("--slice debe estar en el rango 1..100")
 
+# --- NUEVO: Lógica Zero-Shot Automática ---
+is_zero_shot = (slice_pct == 100)
+
 # Configuracion basica
-INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
+INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg//synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
 OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic.jsonl")
-MODEL_NAME = "mistral-small"
+MODEL_NAME = "mistral-small3.2"
 
 BASIC = False
 SAVE = True
@@ -96,11 +98,7 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
 
     return df_filtrado, conteo_diagnosticos_raw
 
-def analizar_estadisticas(
-    df: pd.DataFrame,
-    conteo_diagnosticos: dict,
-    zero_shot: bool = False,
-) -> tuple[pd.DataFrame, int]:
+def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: bool = False,) -> tuple[pd.DataFrame, int]:
     """
     Imprime stats y devuelve:
     1. DataFrame con describe() (stats numéricas).
@@ -401,13 +399,7 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     return df_filtrado.sort_values("dist").head(k)
 
-def generar_dialogo_paciente(
-    dataset_name: str,
-    target: dict,
-    vecinos: pd.DataFrame,
-    ctx_size: int,
-    zero_shot: bool = False,
-) -> str | None:
+def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFrame,ctx_size: int,zero_shot: bool = False,) -> str | None:
     """Wrapper de compatibilidad: delega en el módulo de prompt system."""
     tokenizer = get_tokenizer()
     return generar_dialogo_paciente_prompt(
@@ -427,10 +419,10 @@ def main() -> None:
     # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
     df_real, conteo_raw = cargar_datos(INPUT_PATH)
     prompt_spec = get_prompt_spec(dataset)
-    if args_slurm.zero_shot and prompt_spec.zero_shot_user_template is None:
+    if is_zero_shot and prompt_spec.zero_shot_user_template is None:
         sys.exit(f"El dataset '{dataset}' no define plantillas zero-shot en prompt_system.py")
     print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
-    print(f"[INFO] Modo de generación: {'zero-shot' if args_slurm.zero_shot else 'few-shot'}")
+    print(f"[INFO] Modo de generación: {'zero-shot' if is_zero_shot else 'few-shot'}")
     
     if args_slurm.slice < 100:
         y_pct = 100 - args_slurm.slice
@@ -443,9 +435,15 @@ def main() -> None:
                 f"Generando el {y_pct}% restante: {muestras_a_generar} sintéticas."
             )
     else:
-        print("\n[LOW-RESOURCE MODE] Slice del 100%. No se generan muestras sintéticas.")
-        for diag in list(conteo_raw.keys()):
-            conteo_raw[diag] = 0
+        # Generar el mismo número de sintéticos si el slice es 100
+        print("\n[FULL SYNTHETIC MODE] Slice del 100%. Se generará una cantidad idéntica de datos sintéticos.")
+        for diag, count_real in conteo_raw.items():
+            muestras_a_generar = count_real  # 1 sintético por cada 1 real
+            conteo_raw[diag] = muestras_a_generar
+            print(
+                f"Slice del 100%. {diag} tiene {count_real} reales. "
+                f"Generando {muestras_a_generar} sintéticas equivalentes."
+            )
     
     # Plot de distribuciones 
     # plot_distribuciones_por_diagnostico(df_real)
@@ -454,11 +452,7 @@ def main() -> None:
     # plot_distribuciones_objetivo(df_real, DIAG_OBJETIVO)
 
     # Calculamos stats 
-    stats, recommended_ctx = analizar_estadisticas(
-        df_real,
-        conteo_raw,
-        zero_shot=args_slurm.zero_shot,
-    )
+    stats, recommended_ctx = analizar_estadisticas(df_real,conteo_raw,zero_shot=is_zero_shot,)
     
     writer = None
     if SAVE:
@@ -490,7 +484,7 @@ def main() -> None:
             batch_bad = 0
 
             for target in targets:
-                if args_slurm.zero_shot:
+                if is_zero_shot:
                     vecinos = pd.DataFrame()
                 else:
                     vecinos = buscar_vecinos_knn(target, df_real, k=K_NEIGHBORS)
@@ -506,7 +500,7 @@ def main() -> None:
                     target,
                     vecinos,
                     recommended_ctx,
-                    zero_shot=args_slurm.zero_shot,
+                    zero_shot=is_zero_shot,
                 )
 
                 # --- VALIDACIÓN DATASET-AWARE ---
@@ -518,7 +512,7 @@ def main() -> None:
                 # --- SI LLEGA AQUÍ, ES VÁLIDO ---
                 neighbors_meta = (
                     []
-                    if args_slurm.zero_shot
+                    if is_zero_shot
                     else vecinos[["Age", "MMSE", "Gender"]].to_dict("records")
                 )
                 sample = {
