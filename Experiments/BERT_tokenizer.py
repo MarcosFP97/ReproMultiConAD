@@ -18,29 +18,37 @@ from tqdm import tqdm
 # CONFIG (cambia aquí lo que necesites)
 # ============================================================
 
-TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
-TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
-OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_patient_classifier_len256"
+# Configuración de los argumentos de entrada
+parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
+parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
+parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
+parser.add_argument("--mode", type=str, required=True, help="Tipo de tokenización especial : rep (repeticiones), ref (reformulaciones), pause (pausas) y all (todos los tokens a la vez)")
+args = parser.parse_args()
+
+# Asignamos los argumentos a variables para usarlas en la config
+language = args.language
+task = args.task
+mode = args.mode
+
+MODEL_NAME = "bert-base-uncased"
+TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/train_{language}_e5_markers_{mode}.jsonl"
+TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/test_{language}_e5_markers_{mode}.jsonl"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{language}_{task}_{mode}_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
-MODEL_NAME = "bert-base-uncased"
-#MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-def get_paths_for_mode(mode: str):
-    train_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5_markers_{mode}.jsonl"
-    test_path  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5_markers_{mode}.jsonl"
-    out_dir    = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256_{mode}"
-    return train_path, test_path, out_dir
-
-DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario, como ya estabas haciendo
+if task == "binary" :
+    DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
+elif task == "multiclass" :
+    DROP_LABEL_VALUE = None
+    
 VERBOSE = True             # ponlo en False si quieres menos prints
-
 
 # ============================================================
 # 1) DATASET
@@ -107,7 +115,6 @@ def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
 
     return df
 
-
 def encode_labels_fit(df, label_col):
     """
     Ajusta LabelEncoder con train y crea columna df['label'] con ints.
@@ -129,7 +136,6 @@ def encode_labels_fit(df, label_col):
 
     return df, le
 
-
 def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     """
     Usa el LabelEncoder del train para transformar etiquetas del test.
@@ -145,7 +151,6 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
 
     df["label"] = label_encoder.transform(df[label_col])
     return df
-
 
 def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
     """
@@ -169,12 +174,10 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
 
     return train_texts, val_texts, train_labels, val_labels
 
-
 def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=False):
     dataset = ClassificationDataset(texts, labels, tokenizer, max_len)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return loader
-
 
 # ============================================================
 # 3) MODEL SETUP
@@ -191,10 +194,8 @@ def get_special_tokens_for_mode(mode: str):
         return ["[PAUSE]", "[REP]", "[REF]"]
     raise ValueError(f"Unknown mode: {mode}")
 
-
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def build_model(model_name, num_labels, device):
     #model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
@@ -202,10 +203,8 @@ def build_model(model_name, num_labels, device):
     model.to(device)
     return model
 
-
 def build_optimizer(model, lr=5e-5):
     return AdamW(model.parameters(), lr=lr)
-
 
 # ============================================================
 # 4) TRAIN / EVAL
@@ -235,7 +234,6 @@ def train_one_epoch(model, train_loader, optimizer, device, epoch_idx, epochs_to
 
     return total_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
-
 def evaluate_accuracy(model, data_loader, device):
     model.eval()
     correct = 0
@@ -254,7 +252,6 @@ def evaluate_accuracy(model, data_loader, device):
             total += labels.size(0)
 
     return (correct / total) if total > 0 else 0.0
-
 
 def predict_labels(model, data_loader, device):
     model.eval()
@@ -297,7 +294,6 @@ def predict_with_probs(model, data_loader, device):
 
     return all_true, all_pred, all_probs
 
-
 # ============================================================
 # 5) SAVE
 # ============================================================
@@ -309,7 +305,6 @@ def save_artifacts(model, tokenizer, label_encoder, out_dir):
 
     if VERBOSE:
         print(f"\n[SAVE] Model + tokenizer + label_encoder saved to:\n  {out_dir}")
-
 
 # ============================================================
 # 6) EXTRAS: inspección de tokenización / longitudes
@@ -333,14 +328,12 @@ def describe_token_lengths(df, tokenizer, text_col, max_len):
     print("\n[TOKENS] Corresponding token ids (first 50):")
     print(ids)
 
-
 def inspect_one_batch(loader):
     batch = next(iter(loader))
     print("\n[BATCH] Example batch shapes:")
     print("  input_ids:     ", tuple(batch["input_ids"].shape))      # [B, max_len]
     print("  attention_mask:", tuple(batch["attention_mask"].shape)) # [B, max_len]
     print("  labels:        ", tuple(batch["label"].shape))          # [B] 
-
 
 # ============================================================
 # 7) GUARDADO A EXCEL
@@ -349,13 +342,7 @@ def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: 
     lengths = df[text_col].apply(lambda x: len(tokenizer.tokenize(str(x))))
     return float((lengths > max_len).mean() * 100.0)
 
-def build_experiment_row(
-    *,
-    y_true: list,
-    y_pred: list,
-    class_names: list,
-    exp_meta: dict,
-) -> pd.DataFrame:
+def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta: dict,) -> pd.DataFrame:
     """
     Devuelve un DF de 1 fila con:
     - metadatos del experimento
@@ -393,16 +380,7 @@ def build_experiment_row(
 
     return pd.DataFrame([row])
 
-def save_results_excel(
-    out_path: str,
-    *,
-    summary_row_df: pd.DataFrame,
-    y_true: list,
-    y_pred: list,
-    class_names: list,
-    pred_df: pd.DataFrame | None = None,
-    top_errors: int = 50
-):
+def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list,y_pred: list,class_names: list,):
     """
     Excel:
       - summary: 1 fila con métricas + metadatos
@@ -430,13 +408,6 @@ def save_results_excel(
 # MAIN
 # ============================================================
 def main():
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", required=True, choices=["pause","rep","ref","all"])
-    args = parser.parse_args()
-    mode = args.mode
-
-    TRAIN_PATH, TEST_PATH, OUTPUT_DIR = get_paths_for_mode(mode)
 
     print("========== BERT TEXT CLASSIFICATION PIPELINE ==========")
     
@@ -573,8 +544,7 @@ def main():
     )
 
     # nombre Excel 
-    task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_en_{mode}_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"BERT_{language}_{mode}_{task}.xlsx")
 
     save_results_excel(
         out_xlsx,
@@ -582,8 +552,6 @@ def main():
         y_true=y_true,
         y_pred=y_pred,
         class_names=list(label_encoder.classes_),
-        pred_df=pred_df,
-        top_errors=50
     )
 
     # imprime resumen rápido

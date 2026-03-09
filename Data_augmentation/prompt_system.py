@@ -47,8 +47,8 @@ class PromptSpec:
 def validate_chat(texto: str | None) -> bool:
     """
     Validacion minima CHAT:
-    - Debe empezar con *INV: o *PAR:
-    - Debe tener al menos una linea *INV: y una *PAR:
+    - Debe empezar con INV: o PAR:
+    - Debe tener al menos una linea INV: y una PAR:
     """
     if not texto:
         return False
@@ -57,11 +57,7 @@ def validate_chat(texto: str | None) -> bool:
     if not lines:
         return False
 
-    if not re.match(r"^\*(INV|PAR):", lines[0]):
-        return False
-
-    # Verificar códigos de tiempo prohibidos
-    if "\x15" in texto or re.search(r"\x15\d+_\d+\x15", texto):
+    if not re.match(r"^(INV|PAR):", lines[0]):
         return False
 
     # Rechazar code / markdown / notebooks
@@ -72,8 +68,8 @@ def validate_chat(texto: str | None) -> bool:
     if re.search(r"^\+{3,}", texto, flags=re.MULTILINE):
         return False
 
-    has_inv = any(l.startswith("*INV:") for l in lines)
-    has_par = any(l.startswith("*PAR:") for l in lines)
+    has_inv = any(l.startswith("INV:") for l in lines)
+    has_par = any(l.startswith("PAR:") for l in lines)
     return has_inv and has_par
 
 
@@ -147,23 +143,13 @@ def validate_no_other_speakers(texto: str | None, _: PromptSpec) -> bool:
     return True
 
 
-def validate_no_timecodes(texto: str | None, _: PromptSpec) -> bool:
-    """Rechaza \\x15 y patrones de timecode."""
-    if not texto:
-        return False
-    if "\x15" in texto:
-        return False
-    if re.search(r"\x15.*?\x15", texto, flags=re.DOTALL):
-        return False
-    return True
-
 
 PROMPT_REGISTRY: dict[str, PromptSpec] = {
     # PITT
     "pitt": PromptSpec(
         system_template=(
             "You generate synthetic Pitt Corpus dialogues in CHAT format. "
-            "Output only turns from interviewer (*INV:) and participant (*PAR:)."
+            "Output only turns from interviewer (INV) and participant (PAR)"
         ),
         user_template="""
             Use these neighbors as style anchors:
@@ -179,13 +165,12 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Rules:
             {rules_block}
             """.strip(),
-        roles_required=("*INV:", "*PAR:"),
+        roles_required=("INV:", "PAR:"),
         dataset_rules=(
-            "Include both speakers.",
+            "Include both speakers using the tags INV: and PAR: respectively.",
             "MIMIC the broken speech patterns found in the neighbors (do not correct grammar).",
             'YOU MUST INCLUDE CHAT CODES if the neighbors have them. Examples :\n- Pauses: (.) or (..)\n- Repetitions: [/] (e.g., "the [/] the cookie")\n- Revisions: [//] (e.g., "girl [//] boy")\n- Fillers: &-uh, &-um',
-            "Keep Cookie Theft context.",
-            "CRITICAL: DO NOT include time alignment bullets (e.g., \\x15123_456\\x15). Since this is synthetic text without audio, time codes are invalid.",
+            "Keep Cookie Theft context."
         ),
         neighbor_header_template="--- Neighbor {i} | Diagnosis: {Diagnosis} | Age: {Age} | MMSE: {MMSE} | Gender: {Gender} ---",
         validators=(validate_chat_for_spec, validate_required_roles),
@@ -217,7 +202,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             {rules_block}
         """.strip(),
         zero_shot_rules=(
-            "Include both speakers (*INV: and *PAR:).",
+            "Include both speakers",
             "MIMIC the cognitive decline",
             'YOU MUST INCLUDE CHAT CODES to reflect the cognition: Pauses (.) or (..), Repetitions [/], Revisions [//], and Fillers (&-uh, &-um).',
             "Keep the Cookie Theft picture context",
@@ -254,15 +239,14 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             """.strip(),
         roles_required=("PAR:",),
         dataset_rules=(
-            'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:"',
+            'Solo se permiten líneas de participante',
             "No incluyas entrevistador ni otros speakers; no agregues prosa fuera de las líneas del transcript.",
             "La salida debe estar en español.",
             "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
             "Modela el nivel cognitivo/fluidez según vecinos: mayor capacidad = lectura más fluida; menor capacidad = más vacilaciones, repeticiones, reparaciones, sustituciones, omisiones y reinicios.",
             "No cambies el pasaje obligatorio; los errores solo pueden aparecer como disfluencias y marcas CHAT *alrededor* del pasaje, sin alterar su texto.",
             "Imita el estilo de disfluencias de los vecinos si existe ((.), (..), [/], [//], &-eh, &-em, etc.) y evita inventar estilos ajenos salvo mínimo necesario.",
-            "CRITICAL: prohibidos símbolos de alineación temporal (\\x15 o patrones \\x15...\\x15).",
-            "FORMATO/CONTROL: produce entre 2 y 6 líneas PAR: y termina. No añadas líneas extra.",
+            "FORMATO/CONTROL: produce entre 2 y 6 líneas y termina. No añadas líneas extra.",
             "ANTI-LOOP: no repitas el pasaje ni vuelvas a recitarlo; no repitas secuencias largas (>8 palabras) del pasaje.",
             "Prohibidos markdown/code fences, headings, listas, explicaciones y artefactos de notebook/código.",
         ),
@@ -273,7 +257,6 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             validate_only_par_lines,
             validate_contains_passage_verbatim,
             validate_no_other_speakers,
-            validate_no_timecodes,
         ),
         basic_user_template="""
             Usa estos vecinos como anclas de estilo:
@@ -301,31 +284,31 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Gender: {Gender}
 
             TAREA:
-
             Lectura en español de las dos primeras frases de Don Quijote de Cervantes.
 
-            Genera un transcript de cómo leería este paciente exacto el pasaje, adaptando su fluidez a su diagnóstico y puntuación MMSE.
-
-            PASAJE OBLIGATORIO (debe aparecer literal y exactamente una vez):
-
+            PASAJE OBLIGATORIO:
             "{required_passage}"
 
-            Rules:
+            OBJETIVO DE LA SIMULACIÓN:
+            Genera la transcripción exacta de CÓMO leería este paciente el pasaje en TIEMPO REAL. 
+            Debes tropezar, dudar y equivocarte MIENTRAS lees las palabras, adaptando la cantidad de errores al nivel cognitivo (Diagnosis y MMSE).
 
+            Rules:
             {rules_block}
         """.strip(),
         zero_shot_rules=(
-            'Solo se permiten líneas de participante; cada línea no vacía DEBE comenzar exactamente con "PAR:".',
-            "No incluyas entrevistador ni otros speakers.",
-            "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
-            "MODELA EL NIVEL COGNITIVO EN LA TRANSCRIPCIÓN",
-            "No cambies el pasaje obligatorio; los errores de lectura solo pueden aparecer como disfluencias y marcas CHAT *alrededor* del pasaje.",   
-            "ANTI-LOOP: no repitas el pasaje ni vuelvas a recitarlo.",
-            "Prohibidos markdown/code fences, headings o explicaciones.",
+            "Usa el prefijo PAR: para el texto generado.",
+            "PROHIBIDO usar acotaciones teatrales (ej. *pausa*, *murmura*, *lee*). PROHIBIDO añadir comentarios del paciente al final o al principio. Solo debes generar el intento de lectura.",
+            "INCRUSTA los errores y bloqueos DURANTE la lectura del pasaje, partiendo las frases. Para ello, DEBES usar OBLIGATORIAMENTE este diccionario de marcas CHAT:",
+            "  - Repeticiones: [/] (ejemplo: un [/] un hidalgo)",
+            "  - Reformulaciones/Autocorrecciones: [//] (ejemplo: carnero [//] vaca)",
+            "  - Rellenos de duda: &-eh , &-em",
+            "MODELA EL NIVEL COGNITIVO: Si el MMSE es alto (27-30), la lectura debe ser casi perfecta. Si el MMSE es bajo (<24) o tiene Demencia, destroza la fluidez con muchas repeticiones [/], reformulaciones [//], rellenos, y confunde palabras reales del texto.",
+            "ANTI-LOOP: Genera el pasaje intentando avanzar hasta el final de la frase 'tres partes de su hacienda'. Cuando llegues a esa palabra, DETENTE INMEDIATAMENTE y no generes más texto.",
         ),
         ollama_options={
-            "temperature": 0.25,
-            "num_predict": 150,
+            "temperature": 0.35, 
+            "num_predict": 200,
             "repeat_penalty": 1.25,
             "top_p": 0.9,
             "top_k": 40,
@@ -536,14 +519,14 @@ def self_check_prompt_specs() -> None:
                 "Age": 70,
                 "MMSE": 29,
                 "Gender": "F",
-                "Text_interviewer_participant": "*INV: what do you see?\n*PAR: the boy takes cookies.",
+                "Text_interviewer_participant": "INV: what do you see?\n*PAR: the boy takes cookies.",
             },
             {
                 "Diagnosis": "HC",
                 "Age": 73,
                 "MMSE": 27,
                 "Gender": "F",
-                "Text_interviewer_participant": "*INV: anything else?\n*PAR: mother is washing dishes.",
+                "Text_interviewer_participant": "INV: anything else?\n*PAR: mother is washing dishes.",
             },
         ]
     )
@@ -559,7 +542,7 @@ def self_check_prompt_specs() -> None:
         )
         print(f"[SELF-CHECK] user_preview_{ds}: {messages[-1]['content'][:160].replace(chr(10), ' ')}...")
 
-    assert validate_generated_text("*INV: hi\n*PAR: hello", get_prompt_spec("pitt"))
+    assert validate_generated_text("INV: hi\nPAR: hello", get_prompt_spec("pitt"))
     assert validate_generated_text("SpeakerA: hi\nSpeakerB: hello", get_prompt_spec("default"))
 
     ivanova_target = {
@@ -598,13 +581,11 @@ def self_check_prompt_specs() -> None:
     ivanova_ok = f"PAR: {IVANOVA_REQUIRED_PASSAGE}"
     ivanova_bad_prefix = f"*PAR: {IVANOVA_REQUIRED_PASSAGE}"
     ivanova_bad_speaker = f"INV: hola\nPAR: {IVANOVA_REQUIRED_PASSAGE}"
-    ivanova_bad_timecode = f"PAR: {IVANOVA_REQUIRED_PASSAGE}\nPAR: \x15123_456\x15"
     ivanova_bad_topic = "PAR: Hoy fuimos al parque y comimos helado bajo el sol."
 
     assert validate_generated_text(ivanova_ok, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_prefix, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_speaker, ivanova_spec)
-    assert not validate_generated_text(ivanova_bad_timecode, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_topic, ivanova_spec)
 
     sample_ctx = 8192
@@ -613,7 +594,7 @@ def self_check_prompt_specs() -> None:
     print(f"[SELF-CHECK] options_pitt(ctx={sample_ctx})={pitt_options}")
     print(f"[SELF-CHECK] options_ivanova(ctx={sample_ctx})={ivanova_options}")
     assert abs(float(pitt_options["temperature"]) - 1.0) < 1e-9
-    assert abs(float(ivanova_options["temperature"]) - 0.5) < 1e-9
+    assert abs(float(ivanova_options["temperature"]) - 0.25) < 1e-9
     assert int(pitt_options["num_ctx"]) == sample_ctx
     assert int(ivanova_options["num_ctx"]) == sample_ctx
 

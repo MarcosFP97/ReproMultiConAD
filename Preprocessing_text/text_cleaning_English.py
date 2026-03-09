@@ -84,6 +84,7 @@ def preprocess_text(text):
     text = re.sub(r'\b[A-Z]{3}\b', '', text)
     text = re.sub(r'xxx', '', text)
     text = re.sub(r'<[^>]*>', '', text) 
+    text = re.sub(r'[\x15][0-9_]+[\x15]', ' ', text) # Elimina los códigos de tiempo de TalkBank (ej: 140_6514)
     # Remove qutation and all punctuation marks, in case of TF-IDF, for e5 you should comment out this part.
     if TFIDF :
         text = re.sub(r'[^\w\s]', '', text)

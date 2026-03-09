@@ -18,34 +18,40 @@ from tqdm import tqdm
 # CONFIG
 # ============================================================
 
+#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
+#TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
+#OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
+
+#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_augmented.jsonl"
+
 # Configuración de los argumentos de entrada
-parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
-parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
-parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
+parser = argparse.ArgumentParser(description="Entrenamiento de BERT con slices de datos")
+parser.add_argument("--dataset", type=str, required=True, help="Nombre del dataset (ej: ivanova, pitt)")
+parser.add_argument("--percentage", type=int, required=True, help="Porcentaje del slice (ej: 20, 40, 60, 80)")
 args = parser.parse_args()
 
 # Asignamos los argumentos a variables para usarlas en la config
-language = args.language
-task = args.task
+dataset = args.dataset
+percentage = args.percentage
 
-MODEL_NAME = "bert-base-uncased"
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_{language}_e5.jsonl"
-TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_{language}_e5.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{language}_{task}_len256"
+#TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}_synthetic.jsonl"
+#TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
+#OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_patient_classifier_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
+if dataset == "ivanova":
+    MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
+else:
+    MODEL_NAME = "bert-base-uncased"
+    
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-if task == "binary" :
-    DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
-elif task == "multiclass" :
-    DROP_LABEL_VALUE = None
-    
+DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
 VERBOSE = True             # False si queremos menos prints
 
 
@@ -91,6 +97,7 @@ class ClassificationDataset(Dataset):
             "label": torch.tensor(label, dtype=torch.long),
         }
 
+
 # ============================================================
 # 2) DATA PREP
 # ============================================================
@@ -113,6 +120,7 @@ def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
 
     return df
 
+
 def encode_labels_fit(df, label_col):
     """
     Ajusta LabelEncoder con train y crea columna df['label'] con ints.
@@ -134,6 +142,7 @@ def encode_labels_fit(df, label_col):
 
     return df, le
 
+
 def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     """
     Usa el LabelEncoder del train para transformar etiquetas del test.
@@ -149,6 +158,7 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
 
     df["label"] = label_encoder.transform(df[label_col])
     return df
+
 
 def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
     """
@@ -172,10 +182,12 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
 
     return train_texts, val_texts, train_labels, val_labels
 
+
 def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=False):
     dataset = ClassificationDataset(texts, labels, tokenizer, max_len)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return loader
+
 
 # ============================================================
 # 3) MODEL SETUP
@@ -183,14 +195,17 @@ def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=F
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def build_model(model_name, num_labels, device):
     #model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     model.to(device)
     return model
 
+
 def build_optimizer(model, lr=5e-5):
     return AdamW(model.parameters(), lr=lr)
+
 
 # ============================================================
 # 4) TRAIN / EVAL
@@ -220,6 +235,7 @@ def train_one_epoch(model, train_loader, optimizer, device, epoch_idx, epochs_to
 
     return total_loss / len(train_loader) if len(train_loader) > 0 else 0.0
 
+
 def evaluate_accuracy(model, data_loader, device):
     model.eval()
     correct = 0
@@ -238,6 +254,7 @@ def evaluate_accuracy(model, data_loader, device):
             total += labels.size(0)
 
     return (correct / total) if total > 0 else 0.0
+
 
 def predict_labels(model, data_loader, device):
     model.eval()
@@ -280,6 +297,7 @@ def predict_with_probs(model, data_loader, device):
 
     return all_true, all_pred, all_probs
 
+
 # ============================================================
 # 5) SAVE
 # ============================================================
@@ -315,12 +333,14 @@ def describe_token_lengths(df, tokenizer, text_col, max_len):
     print("\n[TOKENS] Corresponding token ids (first 50):")
     print(ids)
 
+
 def inspect_one_batch(loader):
     batch = next(iter(loader))
     print("\n[BATCH] Example batch shapes:")
     print("  input_ids:     ", tuple(batch["input_ids"].shape))      # [B, max_len]
     print("  attention_mask:", tuple(batch["attention_mask"].shape)) # [B, max_len]
     print("  labels:        ", tuple(batch["label"].shape))          # [B] 
+
 
 # ============================================================
 # 7) GUARDADO A EXCEL
@@ -329,7 +349,13 @@ def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: 
     lengths = df[text_col].apply(lambda x: len(tokenizer.tokenize(str(x))))
     return float((lengths > max_len).mean() * 100.0)
 
-def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta: dict,) -> pd.DataFrame:
+def build_experiment_row(
+    *,
+    y_true: list,
+    y_pred: list,
+    class_names: list,
+    exp_meta: dict,
+) -> pd.DataFrame:
     """
     Devuelve un DF de 1 fila con:
     - metadatos del experimento
@@ -367,7 +393,16 @@ def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta:
 
     return pd.DataFrame([row])
 
-def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list,y_pred: list,class_names: list):
+def save_results_excel(
+    out_path: str,
+    *,
+    summary_row_df: pd.DataFrame,
+    y_true: list,
+    y_pred: list,
+    class_names: list,
+    pred_df: pd.DataFrame | None = None,
+    top_errors: int = 50
+):
     """
     Excel:
       - summary: 1 fila con métricas + metadatos
@@ -393,6 +428,23 @@ def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list
 # ============================================================
 # MAIN
 # ============================================================
+import re
+
+def limpiar_texto_chat(texto: str) -> str:
+    """Elimina los códigos de tiempo de CHAT y limpia espacios extra."""
+    if not isinstance(texto, str):
+        return ""
+    
+    # Busca el carácter \x15 o el símbolo , seguido de números y guiones bajos, y el cierre
+    texto_limpio = re.sub(r'[\x15][0-9_]+[\x15]', ' ', texto)
+    
+    # También podemos limpiar las marcas de speaker si tu sintético no las tiene en el mismo formato
+    # texto_limpio = re.sub(r'^\*?(PAR|INV):\s*', '', texto_limpio, flags=re.MULTILINE)
+    
+    # Eliminar espacios dobles que quedan al quitar los códigos
+    texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
+    return texto_limpio
+
 def main():
     print("========== BERT TEXT CLASSIFICATION PIPELINE ==========")
     
@@ -403,6 +455,11 @@ def main():
     train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
+    
+    # Aplica la limpieza a tus dos DataFrames ANTES de pasarlos al tokenizador de BERT
+    print("[PREPROCESO] Limpiando códigos de tiempo del dataset Real...")
+    train_df['Text_interviewer_participant'] = train_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
+    test_df['Text_interviewer_participant'] = test_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
 
     # 2) Label encoding
     print("\n[STEP 2] Label encoding using TRAIN only...")
@@ -514,14 +571,17 @@ def main():
     )
 
     ################## Excel ######################
-    out_xlsx = os.path.join(results_dir, f"BERT_{language}_{task}.xlsx")
+    task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
+    out_xlsx = os.path.join(results_dir, f"BERT_Synthetic_{dataset}_{percentage}_{task_name}.xlsx")
 
     save_results_excel(
         out_xlsx,
         summary_row_df=summary_row,
         y_true=y_true,
         y_pred=y_pred,
-        class_names=list(label_encoder.classes_)
+        class_names=list(label_encoder.classes_),
+        pred_df=pred_df,
+        top_errors=50
     )
 
     # imprime resumen rápido
