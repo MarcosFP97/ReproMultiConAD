@@ -6,6 +6,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
 # CLASE TRAINER. Intentaremos hacer un BERT balanceado
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import Trainer, TrainingArguments
@@ -167,13 +168,46 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
     Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
     stratify mantiene proporciones de clase.
     """
-    train_texts, val_texts, train_labels, val_labels = train_test_split(
-        df[text_col].values,
-        df[label_encoded_col].values,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=df[label_encoded_col].values
-    )
+    labels = df[label_encoded_col].values
+    class_counts = pd.Series(labels).value_counts()
+    n_classes = int(class_counts.shape[0])
+
+    if isinstance(test_size, float):
+        val_size_est = int(np.ceil(len(df) * test_size))
+    else:
+        val_size_est = int(test_size)
+
+    can_stratify = (class_counts.min() >= 2) and (val_size_est >= n_classes)
+    stratify_labels = labels if can_stratify else None
+
+    if VERBOSE and not can_stratify:
+        print(
+            "[SPLIT][WARN] No se puede estratificar de forma segura "
+            f"(min_class_count={int(class_counts.min())}, n_classes={n_classes}, "
+            f"val_size_est={val_size_est}). Se hará split sin stratify."
+        )
+
+    try:
+        train_texts, val_texts, train_labels, val_labels = train_test_split(
+            df[text_col].values,
+            labels,
+            test_size=test_size,
+            random_state=random_state,
+            stratify=stratify_labels,
+        )
+    except ValueError as e:
+        if stratify_labels is not None:
+            if VERBOSE:
+                print(f"[SPLIT][WARN] Falló split estratificado ({e}). Reintentando sin stratify.")
+            train_texts, val_texts, train_labels, val_labels = train_test_split(
+                df[text_col].values,
+                labels,
+                test_size=test_size,
+                random_state=random_state,
+                stratify=None,
+            )
+        else:
+            raise
 
     if VERBOSE:
         print(f"\n[SPLIT] Train size: {len(train_texts)} | Val size: {len(val_texts)}")
@@ -261,7 +295,7 @@ def inspect_one_batch(loader):
     print("\n[BATCH] Example batch shapes:")
     print("  input_ids:     ", tuple(batch["input_ids"].shape))      # [B, max_len]
     print("  attention_mask:", tuple(batch["attention_mask"].shape)) # [B, max_len]
-    print("  labels:        ", tuple(batch["label"].shape))          # [B] 
+    print("  labels:        ", tuple(batch["labels"].shape))         # [B]
 
 
 # ============================================================
@@ -345,11 +379,6 @@ def main():
     train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
-    
-    # Aplica la limpieza a tus dos DataFrames ANTES de pasarlos al tokenizador de BERT
-    print("[PREPROCESO] Limpiando códigos de tiempo del dataset Real...")
-    train_df['Text_interviewer_participant'] = train_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
-    test_df['Text_interviewer_participant'] = test_df['Text_interviewer_participant'].apply(limpiar_texto_chat)
 
     # 2) Label encoding
     print("\n[STEP 2] Label encoding using TRAIN only...")
