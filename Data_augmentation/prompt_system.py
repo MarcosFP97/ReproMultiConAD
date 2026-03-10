@@ -41,7 +41,7 @@ class PromptSpec:
     basic_user_template: str | None = None
     zero_shot_user_template: str | None = None
     zero_shot_rules: tuple[str, ...] | None = None
-    ollama_options: dict[str, Any] = field(default_factory=dict)
+    generation_options: dict[str, Any] = field(default_factory=dict)
 
 
 def validate_chat(texto: str | None) -> bool:
@@ -207,7 +207,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             'YOU MUST INCLUDE CHAT CODES to reflect the cognition: Pauses (.) or (..), Repetitions [/], Revisions [//], and Fillers (&-uh, &-um).',
             "Keep the Cookie Theft picture context",
         ),
-        ollama_options={
+        generation_options={
             "temperature": 1.0,
         },
                 ),
@@ -306,9 +306,10 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             "MODELA EL NIVEL COGNITIVO: Si el MMSE es alto (27-30), la lectura debe ser casi perfecta. Si el MMSE es bajo (<24) o tiene Demencia, destroza la fluidez con muchas repeticiones [/], reformulaciones [//], rellenos, y confunde palabras reales del texto.",
             "ANTI-LOOP: Genera el pasaje intentando avanzar hasta el final de la frase 'tres partes de su hacienda'. Cuando llegues a esa palabra, DETENTE INMEDIATAMENTE y no generes más texto.",
         ),
-        ollama_options={
+        generation_options={
             "temperature": 0.35, 
-            "num_predict": 200,
+            "max_output_tokens": 200,
+            # Nota: repeat_penalty no es universal; los backends que no lo soporten pueden ignorarlo.
             "repeat_penalty": 1.25,
             "top_p": 0.9,
             "top_k": 40,
@@ -425,83 +426,48 @@ def build_messages(
     return [{"role": "user", "content": prompt_user}]
 
 
+def prepare_prompt_payload(
+    *,
+    target: dict,
+    vecinos: pd.DataFrame,
+    dataset_name: str | None = None,
+    spec: PromptSpec | None = None,
+    basic: bool = False,
+    zero_shot: bool = False,
+) -> dict[str, Any]:
+    """
+    Prepara un payload de prompt agnóstico de backend.
+
+    Devuelve:
+    {
+        "spec": PromptSpec,
+        "messages": list[dict],
+        "system_txt": str,
+        "user_txt": str,
+    }
+    """
+    if spec is None:
+        if dataset_name is None:
+            raise ValueError("Debes proporcionar 'spec' o 'dataset_name'.")
+        spec = get_prompt_spec(dataset_name)
+
+    messages = build_messages(spec, target, vecinos, basic=basic, zero_shot=zero_shot)
+    system_txt = next((m["content"] for m in messages if m["role"] == "system"), "")
+    user_txt = next((m["content"] for m in messages if m["role"] == "user"), "")
+
+    return {
+        "spec": spec,
+        "messages": messages,
+        "system_txt": system_txt,
+        "user_txt": user_txt,
+    }
+
+
 def validate_generated_text(texto: str | None, spec: PromptSpec) -> bool:
     """Aplica validadores del dataset en cadena."""
     if not spec.validators:
         return bool(texto and texto.strip())
     return all(validator(texto, spec) for validator in spec.validators)
-
-
-def build_ollama_options(
-    spec: PromptSpec,
-    ctx_size: int,
-    default_temperature: float = 1.0,
-    base_repeat_penalty: float = 1.1,
-) -> dict[str, Any]:
-    """
-    Construye opciones finales para Ollama:
-    - Base estable del pipeline.
-    - Overrides por dataset definidos en PromptSpec.ollama_options.
-    """
-    options: dict[str, Any] = {
-        "temperature": float(default_temperature),
-        "repeat_penalty": float(base_repeat_penalty),
-        "num_ctx": int(ctx_size),
-    }
-
-    for key, value in spec.ollama_options.items():
-        if isinstance(value, bool):
-            options[key] = value
-        elif isinstance(value, int):
-            options[key] = int(value)
-        elif isinstance(value, float):
-            options[key] = float(value)
-        else:
-            options[key] = value
-
-    # Garantizamos tipos serializables en num_ctx incluso con overrides.
-    options["num_ctx"] = int(options.get("num_ctx", ctx_size))
-    if "temperature" in options:
-        options["temperature"] = float(options["temperature"])
-    if "repeat_penalty" in options:
-        options["repeat_penalty"] = float(options["repeat_penalty"])
-
-    return options
-
-
-def generar_dialogo_paciente_prompt(
-    dataset_name: str,
-    target: dict,
-    vecinos: pd.DataFrame,
-    ctx_size: int,
-    basic: bool,
-    model_name: str,
-    tokenizer,
-    zero_shot: bool = False,
-) -> str | None:
-    """Construye prompt dataset-aware, llama a Ollama y devuelve el texto generado."""
-    spec = get_prompt_spec(dataset_name)
-    messages = build_messages(spec, target, vecinos, basic=basic, zero_shot=zero_shot)
-
-    options = build_ollama_options(spec, ctx_size)
-
-    system_txt = next((m["content"] for m in messages if m["role"] == "system"), "")
-    user_txt = next((m["content"] for m in messages if m["role"] == "user"), "")
-
-    sys_tok = len(tokenizer.encode(system_txt, add_special_tokens=False))
-    usr_tok = len(tokenizer.encode(user_txt, add_special_tokens=False))
-    both_txt = system_txt + "\n" + user_txt
-    tot_tok = len(tokenizer.encode(both_txt, add_special_tokens=False))
-
-    print(f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok} | ctx={ctx_size}")
-
-    try:
-        from ollama import chat
-    except Exception as e:
-        sys.exit(f"No se pudo importar ollama: {e}")
-
-    response = chat(model=model_name, messages=messages, options=options)
-    return response.message.content.strip()
 
 
 def self_check_prompt_specs() -> None:
@@ -587,15 +553,5 @@ def self_check_prompt_specs() -> None:
     assert not validate_generated_text(ivanova_bad_prefix, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_speaker, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_topic, ivanova_spec)
-
-    sample_ctx = 8192
-    pitt_options = build_ollama_options(get_prompt_spec("pitt"), sample_ctx)
-    ivanova_options = build_ollama_options(get_prompt_spec("ivanova"), sample_ctx)
-    print(f"[SELF-CHECK] options_pitt(ctx={sample_ctx})={pitt_options}")
-    print(f"[SELF-CHECK] options_ivanova(ctx={sample_ctx})={ivanova_options}")
-    assert abs(float(pitt_options["temperature"]) - 1.0) < 1e-9
-    assert abs(float(ivanova_options["temperature"]) - 0.25) < 1e-9
-    assert int(pitt_options["num_ctx"]) == sample_ctx
-    assert int(ivanova_options["num_ctx"]) == sample_ctx
 
     print("[SELF-CHECK] Prompt construction and validation passed for pitt/default/ivanova.")

@@ -1,11 +1,19 @@
-﻿import argparse
+import argparse
 import sys
 import math
 import logging
 import json
+import os
 from pathlib import Path
-from typing import Any
 import matplotlib.pyplot as plt
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv() -> bool:  # type: ignore[misc]
+        return False
+
+    print("[WARN] python-dotenv no está instalado; se usarán solo variables de entorno del sistema.")
 
 import numpy as np
 import pandas as pd
@@ -16,7 +24,7 @@ from prompt_system import (
     validate_generated_text,
     self_check_prompt_specs,
 )
-from ollama_backend import generar_dialogo_paciente_prompt
+from gemini_backend import generar_dialogo_paciente_prompt, load_cookie_theft_image_inline
 
 
 # Configurar logs de transformers para que no sean molestos
@@ -27,9 +35,18 @@ parser.add_argument('--dataset', required=True)
 parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 0, 20, 40, 60, 80, 100)")
 parser.add_argument('--self_check', action='store_true')
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
+parser.add_argument('--gemini_model', default="gemini-2.0-flash", help="Modelo Gemini (ej: gemini-2.0-flash)")
+parser.add_argument(
+    '--cookie_image',
+    type=Path,
+    default=Path("/mnt/beegfs/groups/irgroup/sara_tfg/assets/cookie_theft_picture.jpg"),
+    help="Ruta local de la imagen Cookie Theft Picture",
+)
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
 slice_pct = args_slurm.slice
+
+load_dotenv()
 
 if slice_pct < 0 or slice_pct > 100:
     parser.error("--slice debe estar en el rango 0..100")
@@ -43,7 +60,9 @@ is_zero_shot = (slice_pct == 0)
 # Configuracion basica
 INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
 OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic.jsonl")
-MODEL_NAME = "mistral-small3.2"
+MODEL_NAME = args_slurm.gemini_model
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+COOKIE_THEFT_IMAGE_PATH = args_slurm.cookie_image
 
 BASIC = False
 SAVE = True
@@ -51,30 +70,11 @@ SAVE = True
 K_NEIGHBORS = 3
 RANDOM_SEED = 42
 
-TOKENIZER: Any = None
-
-# =========== TOKENIZER PARA TENER EN CUENTA LA VENTANA DE CONTEXTO DEL LLM =========== #
-def get_tokenizer():
-    """Carga diferida del tokenizador para evitar dependencias en el self-check."""
-    global TOKENIZER
-    if TOKENIZER is None:
-        print("Cargando tokenizador de Mistral...")
-        try:
-            from transformers import AutoTokenizer
-            # Usamos el tokenizer de Mistral-7B-Instruct-v0.2 que comparte vocabulario con Mistral Small y es menos pesado
-            # Si no tienes internet en el nodo de cómputo, asegúrate de tener esto en caché o descárgalo localmente
-            TOKENIZER = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
-        except Exception as e:
-            sys.exit(f"Error cargando tokenizer (asegúrate de tener internet o el modelo en caché): {e}")
-    return TOKENIZER
-
 def contar_tokens_reales(texto: str) -> int:
-    """Cuenta tokens EXACTOS usando el tokenizer de Mistral."""
+    """Estimación local (agnóstica de backend): ~1 token cada 4 caracteres."""
     if not texto:
         return 0
-    tokenizer = get_tokenizer()
-    # encode devuelve los IDs, su longitud es el número de tokens
-    return len(tokenizer.encode(texto, add_special_tokens=False))
+    return max(1, math.ceil(len(texto) / 4.0))
 
 # =========== CARGAR DATOS Y ANALIZAR ESTADÍSTICAS DEL DATASET =========== #
 def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
@@ -171,7 +171,7 @@ def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: 
     print("=" * 70 + "\n")
         
     # --- ANÁLISIS DE TOKENS EXACTO ---    
-    print("Calculando tokens exactos para todo el dataset (puede tardar unos segundos)...")
+    print("Calculando tokens estimados para todo el dataset (puede tardar unos segundos)...")
     df["real_tokens"] = df["Text_interviewer_participant"].apply(contar_tokens_reales)
     
     avg_tokens = df["real_tokens"].mean()
@@ -195,13 +195,13 @@ def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: 
     if recommended_ctx < min_ctx:
         recommended_ctx = min_ctx
 
-    print("\n--- ANÁLISIS DE TOKENS (EXACTO - MISTRAL) ---")
+    print("\n--- ANÁLISIS DE TOKENS (ESTIMACIÓN AUXILIAR) ---")
     print(f"Media tokens/transcripción: {avg_tokens:.0f}")
     print(f"Máximo tokens/transcripción: {max_tokens:.0f}")
     print(f"Percentil 95 tokens: {p95_tokens:.0f}")
     print(f"Presupuesto vecinos en prompt: {neighbor_budget:.0f}")
     print(f"Reserva fija prompt+respuesta: {prompt_budget + response_budget}")
-    print(f"CONTEXTO RECOMENDADO OLLAMA ({'zero-shot' if zero_shot else 'few-shot'}): {recommended_ctx} tokens")
+    print(f"CONTEXTO DE REFERENCIA ({'zero-shot' if zero_shot else 'few-shot'}): {recommended_ctx} tokens")
         
     print("=" * 70 + "\n")
     return stats, recommended_ctx
@@ -419,8 +419,7 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
     return df_filtrado.sort_values("dist").head(k)
 
 def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFrame,ctx_size: int,zero_shot: bool = False,) -> str | None:
-    """Wrapper de compatibilidad: delega en el módulo de prompt system."""
-    tokenizer = get_tokenizer()
+    """Wrapper de compatibilidad: delega en el backend de Gemini."""
     return generar_dialogo_paciente_prompt(
         dataset_name=dataset_name,
         target=target,
@@ -428,15 +427,28 @@ def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFram
         ctx_size=ctx_size,
         basic=BASIC,
         model_name=MODEL_NAME,
-        tokenizer=tokenizer,
+        api_key=GEMINI_API_KEY,
+        cookie_theft_image_path=COOKIE_THEFT_IMAGE_PATH,
+        token_counter=contar_tokens_reales,
         zero_shot=zero_shot,
     )
 
 # =========== PROGRAMA PRINCIPAL =========== #
 def main() -> None:
     print("Cargando datos...")
+    if not GEMINI_API_KEY:
+        sys.exit(
+            "No se encontró la API key de Gemini. "
+            "Define GEMINI_API_KEY en el entorno o en el archivo .env."
+        )
+
+    if not INPUT_PATH.exists():
+        sys.exit(f"No se encontró el archivo de entrada JSONL: {INPUT_PATH}")
+
     # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
     df_real, conteo_raw = cargar_datos(INPUT_PATH)
+    load_cookie_theft_image_inline(COOKIE_THEFT_IMAGE_PATH)
+
     prompt_spec = get_prompt_spec(dataset)
     if is_zero_shot and prompt_spec.zero_shot_user_template is None:
         sys.exit(f"El dataset '{dataset}' no define plantillas zero-shot en prompt_system.py")
