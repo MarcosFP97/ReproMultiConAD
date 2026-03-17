@@ -308,7 +308,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         ),
         generation_options={
             "temperature": 0.35, 
-            "max_output_tokens": 200,
+            "max_output_tokens": 220,
             # Nota: repeat_penalty no es universal; los backends que no lo soporten pueden ignorarlo.
             "repeat_penalty": 1.25,
             "top_p": 0.9,

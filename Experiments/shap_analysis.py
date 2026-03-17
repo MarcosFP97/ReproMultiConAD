@@ -146,27 +146,12 @@ def filter_by_task(df: pd.DataFrame, task: str) -> pd.DataFrame:
 
 
 def split_for_slurm(df: pd.DataFrame, task_id: int, task_count: int, seed: int) -> pd.DataFrame:
-    task_count = max(task_count, 1)
-    if task_count == 1:
-        return df
-
-    clamped_task_id = min(max(task_id, 0), task_count - 1)
-    shuffled = df.sample(frac=1.0, random_state=seed)
-    chunks = np.array_split(shuffled.index.to_numpy(), task_count)
-    chunk_indices = chunks[clamped_task_id]
-    chunk_df = shuffled.loc[chunk_indices].copy()
-
-    logging.info(
-        "SLURM array chunk %d/%d -> %d filas (dataset total: %d).",
-        clamped_task_id,
-        task_count,
-        len(chunk_df),
-        len(df),
-    )
-    if chunk_df.empty:
-        logging.warning("Chunk vacio; se reutiliza dataset completo para evitar job sin salida.")
-        return shuffled.copy()
-    return chunk_df
+    """
+    Anulamos la división por chunks para que cada Job (combinación)
+    tenga acceso al dataset completo y pueda extraer sus 10 muestras.
+    """
+    logging.info("Dataset completo disponible para esta combinación (%d filas).", len(df))
+    return df
 
 
 def _sample_part(df: pd.DataFrame, take: int, seed: int) -> pd.DataFrame:
@@ -416,8 +401,7 @@ def main() -> int:
     model_dir = args.model_root / f"bert_{args.language}_{args.task}_{args.marker}_len256"
     test_path = args.test_root / f"test_{args.language}_e5_markers_{args.marker}.jsonl"
 
-    job_suffix = f"_job{args.slurm_task_id:04d}" if args.slurm_task_count > 1 else ""
-    output_html = args.output_root / f"shap_{args.language}_{args.task}_{args.marker}{job_suffix}.html"
+    output_html = args.output_root / f"shap_{args.language}_{args.task}_{args.marker}.html"
 
     if not model_dir.exists():
         logging.error("No existe el directorio de modelo: %s", model_dir)

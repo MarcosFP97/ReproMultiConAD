@@ -7,7 +7,7 @@ import pandas as pd
 DATASET = "ivanova"
 INPUT_TEMPLATE = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl"
 OUTPUT_DIR = Path("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices")
-PERCENTAGES = (20, 40, 60, 80)
+PERCENTAGES = (20, 40, 60, 80, 95)
 RANDOM_STATE = 42
 
 def shuffle_and_assign_percentile(group: pd.DataFrame) -> pd.DataFrame:

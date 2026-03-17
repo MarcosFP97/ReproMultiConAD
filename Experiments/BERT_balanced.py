@@ -40,9 +40,9 @@ args = parser.parse_args()
 dataset = args.dataset
 percentage = args.percentage
 
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}_synthetic.jsonl"
+TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_patient_classifier_len256"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_{percentage}_patient_classifier_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
@@ -57,7 +57,7 @@ BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
+DROP_LABEL_VALUE = None   # quitamos MCI para binario
 VERBOSE = True             # False si queremos menos prints
 
 
@@ -211,8 +211,6 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
 
     if VERBOSE:
         print(f"\n[SPLIT] Train size: {len(train_texts)} | Val size: {len(val_texts)}")
-        # Distribución por clase en train/val
-        import numpy as np
         print("[SPLIT] Class distribution (train):", dict(zip(*np.unique(train_labels, return_counts=True))))
         print("[SPLIT] Class distribution (val):  ", dict(zip(*np.unique(val_labels, return_counts=True))))
 
@@ -429,7 +427,7 @@ def main():
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LR,
-        evaluation_strategy="epoch", # Evalúa al final de cada epoch
+        eval_strategy="epoch", # Evalúa al final de cada epoch
         save_strategy="epoch",
         load_best_model_at_end=True, # Se queda con el mejor modelo según validación
         logging_dir='./logs',
@@ -525,7 +523,7 @@ def main():
 
     ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"BERT_Synthetic_{dataset}_{percentage}_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"balancedBERT_{dataset}_{percentage}_{task_name}.xlsx")
 
     save_results_excel(
         out_xlsx,

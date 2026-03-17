@@ -4,6 +4,7 @@ import math
 import logging
 import json
 import os
+import PIL.Image
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -35,11 +36,10 @@ parser.add_argument('--dataset', required=True)
 parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 0, 20, 40, 60, 80, 100)")
 parser.add_argument('--self_check', action='store_true')
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
-parser.add_argument('--gemini_model', default="gemini-2.0-flash", help="Modelo Gemini (ej: gemini-2.0-flash)")
 parser.add_argument(
     '--cookie_image',
     type=Path,
-    default=Path("/mnt/beegfs/groups/irgroup/sara_tfg/assets/cookie_theft_picture.jpg"),
+    default=Path("/mnt/beegfs/groups/irgroup/sara_tfg/assets/cookie-theft-picture.ppm"),
     help="Ruta local de la imagen Cookie Theft Picture",
 )
 args_slurm = parser.parse_args()
@@ -59,8 +59,8 @@ is_zero_shot = (slice_pct == 0)
 
 # Configuracion basica
 INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic.jsonl")
-MODEL_NAME = args_slurm.gemini_model
+OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic_GEMINI.jsonl")
+MODEL_NAME = "gemini-2.5-flash"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COOKIE_THEFT_IMAGE_PATH = args_slurm.cookie_image
 
@@ -117,7 +117,7 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
 
     return df_filtrado, conteo_diagnosticos_raw
 
-def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: bool = False,) -> tuple[pd.DataFrame, int]:
+def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: bool = False) -> tuple[pd.DataFrame, int]:
     """
     Imprime stats y devuelve:
     1. DataFrame con describe() (stats numéricas).
@@ -536,6 +536,8 @@ def main() -> None:
                     recommended_ctx,
                     zero_shot=is_zero_shot,
                 )
+                
+                print(generated_text)
 
                 # --- VALIDACIÓN DATASET-AWARE ---
                 if not validate_generated_text(generated_text, prompt_spec):
