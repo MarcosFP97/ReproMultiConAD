@@ -41,22 +41,18 @@ def load_cookie_theft_image_inline(path: Path) -> dict[str, str]:
 
 def build_gemini_generation_config(
     spec: PromptSpec,
+    override_max_output_tokens: int,
     default_temperature: float = 0.7,
     default_top_p: float = 0.95,
     default_top_k: int = 40,
-    default_max_output_tokens: int = 8000,
 ) -> types.GenerateContentConfig:
     generation_options = spec.generation_options
-    max_output_tokens = generation_options.get(
-        "max_output_tokens",
-        generation_options.get("num_predict", default_max_output_tokens),
-    )
 
     return types.GenerateContentConfig(
         temperature=float(generation_options.get("temperature", default_temperature)),
         top_p=float(generation_options.get("top_p", default_top_p)),
         top_k=int(generation_options.get("top_k", default_top_k)),
-        max_output_tokens=int(max_output_tokens),
+        max_output_tokens=int(override_max_output_tokens),
     )
 
 
@@ -67,13 +63,13 @@ def extract_text_from_response(response) -> str | None:
     return None
 
 
-def call_gemini_api_multimodal(
+def call_gemini_api(
     *,
     model_name: str,
     api_key: str,
     system_txt: str,
     user_txt: str,
-    image_inline: dict[str, str],
+    image_inline: dict[str, str] | None,
     generation_config: types.GenerateContentConfig,
     max_retries: int = 3,
 ) -> str | None:
@@ -85,13 +81,14 @@ def call_gemini_api_multimodal(
 
     client = genai.Client(api_key=api_key)
 
-    contents = [
-        types.Part.from_text(text=user_txt),
-        types.Part.from_bytes(
-            data=base64.b64decode(image_inline["data"]),
-            mime_type=image_inline["mime_type"],
-        ),
-    ]
+    contents = [types.Part.from_text(text=user_txt)]
+    if image_inline is not None:
+        contents.append(
+            types.Part.from_bytes(
+                data=base64.b64decode(image_inline["data"]),
+                mime_type=image_inline["mime_type"],
+            )
+        )
 
     config = generation_config
     if system_txt.strip():
@@ -134,11 +131,11 @@ def generar_dialogo_paciente_prompt(
     dataset_name: str,
     target: dict,
     vecinos: pd.DataFrame,
-    ctx_size: int,
     basic: bool,
     model_name: str,
     api_key: str,
     cookie_theft_image_path: Path,
+    max_output_tokens: int,
     token_counter: Callable[[str], int] | None = None,
     zero_shot: bool = False,
     max_retries: int = 3,
@@ -158,12 +155,17 @@ def generar_dialogo_paciente_prompt(
     sys_tok = counter(system_txt)
     usr_tok = counter(user_txt)
     tot_tok = counter(system_txt + "\n" + user_txt)
-    print(f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok} | ctx_ref={ctx_size}")
+    print(f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok}")
 
-    image_inline = load_cookie_theft_image_inline(cookie_theft_image_path)
-    generation_config = build_gemini_generation_config(spec)
+    image_inline = None
+    if spec.uses_cookie_theft_image:
+        image_inline = load_cookie_theft_image_inline(cookie_theft_image_path)
+    generation_config = build_gemini_generation_config(
+        spec,
+        override_max_output_tokens=max_output_tokens,
+    )
 
-    return call_gemini_api_multimodal(
+    return call_gemini_api(
         model_name=model_name,
         api_key=api_key,
         system_txt=system_txt,

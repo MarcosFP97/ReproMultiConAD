@@ -6,21 +6,38 @@ import pandas as pd
 from prompt_system import PromptSpec, prepare_prompt_payload
 
 
-def build_ollama_options(spec: PromptSpec,ctx_size: int,default_temperature: float = 1.0,base_repeat_penalty: float = 1.1,) -> dict[str, Any]:
+def get_ollama_generation_options(spec: PromptSpec) -> dict[str, Any]:
+    """Fusiona opciones comunes y específicas de Ollama definidas en el PromptSpec."""
+    return {
+        **spec.generation_options,
+        **spec.ollama_generation_options,
+    }
+
+
+def resolve_ollama_num_predict(spec: PromptSpec, default_num_predict: int = 1024) -> int:
+    """Devuelve el presupuesto real de salida que Ollama aplicará como num_predict."""
+    merged_options = get_ollama_generation_options(spec)
+    raw_value = merged_options.get("max_output_tokens", merged_options.get("num_predict", default_num_predict))
+    return int(raw_value)
+
+
+def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: float = 1.0,base_repeat_penalty: float = 1.1,) -> dict[str, Any]:
     """
     Construye opciones finales para Ollama:
     - Base estable del pipeline.
-    - Overrides por dataset definidos en PromptSpec.generation_options.
+    - Overrides comunes en PromptSpec.generation_options.
+    - Overrides específicos de Ollama en PromptSpec.ollama_generation_options.
     """
     options: dict[str, Any] = {
         "temperature": float(default_temperature),
         "repeat_penalty": float(base_repeat_penalty),
-        "num_ctx": int(ctx_size),
+        "num_ctx": int(num_ctx),
     }
 
     # Mapeo semántico -> Ollama.
     # max_output_tokens es agnóstico; en Ollama equivale a num_predict.
-    for key, value in spec.generation_options.items():
+    merged_options = get_ollama_generation_options(spec)
+    for key, value in merged_options.items():
         target_key = "num_predict" if key == "max_output_tokens" else key
         if isinstance(value, bool):
             options[target_key] = value
@@ -32,7 +49,7 @@ def build_ollama_options(spec: PromptSpec,ctx_size: int,default_temperature: flo
             options[target_key] = value
 
     # Garantizamos tipos serializables en num_ctx incluso con overrides.
-    options["num_ctx"] = int(options.get("num_ctx", ctx_size))
+    options["num_ctx"] = int(options.get("num_ctx", num_ctx))
     if "temperature" in options:
         options["temperature"] = float(options["temperature"])
     if "repeat_penalty" in options:
@@ -45,7 +62,7 @@ def generar_dialogo_paciente_prompt(
     dataset_name: str,
     target: dict,
     vecinos: pd.DataFrame,
-    ctx_size: int,
+    num_ctx: int,
     basic: bool,
     model_name: str,
     tokenizer,
@@ -64,14 +81,17 @@ def generar_dialogo_paciente_prompt(
     system_txt: str = prompt_payload["system_txt"]
     user_txt: str = prompt_payload["user_txt"]
 
-    options = build_ollama_options(spec, ctx_size)
+    options = build_ollama_options(spec, num_ctx)
 
     sys_tok = len(tokenizer.encode(system_txt, add_special_tokens=False))
     usr_tok = len(tokenizer.encode(user_txt, add_special_tokens=False))
     both_txt = system_txt + "\n" + user_txt
     tot_tok = len(tokenizer.encode(both_txt, add_special_tokens=False))
 
-    print(f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok} | ctx={ctx_size}")
+    print(
+        f"[TOKENS] system={sys_tok} | user={usr_tok} | total={tot_tok} "
+        f"| num_ctx_applied={options['num_ctx']} | num_predict={options.get('num_predict', 'default')}"
+    )
 
     try:
         from ollama import chat

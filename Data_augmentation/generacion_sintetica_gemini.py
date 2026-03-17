@@ -6,16 +6,7 @@ import json
 import os
 import PIL.Image
 from pathlib import Path
-import matplotlib.pyplot as plt
-
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    def load_dotenv() -> bool:  # type: ignore[misc]
-        return False
-
-    print("[WARN] python-dotenv no está instalado; se usarán solo variables de entorno del sistema.")
-
+from dotenv import load_dotenv # Para coger la api key del .env
 import numpy as np
 import pandas as pd
 
@@ -35,6 +26,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
 parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 0, 20, 40, 60, 80, 100)")
 parser.add_argument('--self_check', action='store_true')
+#TODO
 parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
 parser.add_argument(
     '--cookie_image',
@@ -71,7 +63,7 @@ K_NEIGHBORS = 3
 RANDOM_SEED = 42
 
 def contar_tokens_reales(texto: str) -> int:
-    """Estimación local (agnóstica de backend): ~1 token cada 4 caracteres."""
+    """Estimación local aproximada: ~1 token cada 4 caracteres."""
     if not texto:
         return 0
     return max(1, math.ceil(len(texto) / 4.0))
@@ -117,12 +109,9 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
 
     return df_filtrado, conteo_diagnosticos_raw
 
-def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: bool = False) -> tuple[pd.DataFrame, int]:
+def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.DataFrame:
     """
-    Imprime stats y devuelve:
-    1. DataFrame con describe() (stats numéricas).
-    2. Dict con conteo por diagnóstico (ej: {'Dementia': 204, 'HC': 194}).
-    3. Int donde se ha calculado el contexto exacto necesario.
+    Imprime stats y devuelve el DataFrame con describe() para las variables numéricas.
     """
     stats = df.groupby("Diagnosis")[["Age", "MMSE"]].describe()
     df2 = df.copy()
@@ -169,154 +158,28 @@ def analizar_estadisticas(df: pd.DataFrame,conteo_diagnosticos: dict,zero_shot: 
         print(f"  -> Diagnóstico: {diag:<10} | Cantidad a generar: {count}")
         
     print("=" * 70 + "\n")
-        
-    # --- ANÁLISIS DE TOKENS EXACTO ---    
+    return stats
+
+def calcular_presupuesto_salida_gemini(df: pd.DataFrame, has_image_input: bool = True) -> int:
+    """Calcula el presupuesto dinámico de salida de Gemini a partir del percentil 95 del dataset."""
     print("Calculando tokens estimados para todo el dataset (puede tardar unos segundos)...")
     df["real_tokens"] = df["Text_interviewer_participant"].apply(contar_tokens_reales)
-    
+
     avg_tokens = df["real_tokens"].mean()
     max_tokens = df["real_tokens"].max()
-    p95_tokens = df["real_tokens"].quantile(0.95) 
-    
-    # Cálculo dinámico del contexto:
-    # - Few-shot: reserva para K vecinos en prompt.
-    # - Zero-shot: no reserva tokens para vecinos.
-    # - En ambos casos mantenemos un colchón fijo para instrucciones + respuesta.
-    prompt_budget = 800
-    response_budget = 1000
-    neighbor_budget = 0 if zero_shot else (p95_tokens * K_NEIGHBORS)
-    estimated_need = neighbor_budget + prompt_budget + response_budget
-    
-    # Redondeo al bloque de 1024 superior
-    recommended_ctx = int(math.ceil(estimated_need / 1024.0)) * 1024
-    
-    # Mínimo de seguridad
-    min_ctx = 2048 if zero_shot else 4096
-    if recommended_ctx < min_ctx:
-        recommended_ctx = min_ctx
+    p95_tokens = df["real_tokens"].quantile(0.95)
 
-    print("\n--- ANÁLISIS DE TOKENS (ESTIMACIÓN AUXILIAR) ---")
+    output_multiplier = 3.0 if has_image_input else 1.5
+    output_budget = max(int(math.ceil(p95_tokens * output_multiplier)), 1000)
+
+    print("\n--- PRESUPUESTO DE SALIDA GEMINI ---")
     print(f"Media tokens/transcripción: {avg_tokens:.0f}")
     print(f"Máximo tokens/transcripción: {max_tokens:.0f}")
     print(f"Percentil 95 tokens: {p95_tokens:.0f}")
-    print(f"Presupuesto vecinos en prompt: {neighbor_budget:.0f}")
-    print(f"Reserva fija prompt+respuesta: {prompt_budget + response_budget}")
-    print(f"CONTEXTO DE REFERENCIA ({'zero-shot' if zero_shot else 'few-shot'}): {recommended_ctx} tokens")
-        
+    print(f"Presupuesto dinámico de salida: {output_budget}")
     print("=" * 70 + "\n")
-    return stats, recommended_ctx
 
-def plot_distribuciones_por_diagnostico(df: pd.DataFrame) -> None:
-    """
-    Dibuja histogramas de Age y MMSE para cada diagnóstico del dataset.
-    - Age: bins "normales"
-    - MMSE: bins por entero (0-30) para ver bien la discreción y el ceiling effect
-    """
-    diagnosticos = sorted(df["Diagnosis"].dropna().unique())
-
-    for diag in diagnosticos:
-        g = df[df["Diagnosis"] == diag]
-
-        # --- Age ---
-        plt.figure()
-        plt.hist(g["Age"].dropna(), bins=15)
-        plt.title(f"Distribución de Age - {diag} (n={len(g)})")
-        plt.xlabel("Age")
-        plt.ylabel("Frecuencia")
-        plt.savefig(Path.cwd() / f"hist_age_{diag}.png", dpi=200)
-
-        # --- MMSE ---
-        plt.figure()
-        bins = np.arange(-0.5, 30.5 + 1, 1)  # barras centradas en enteros
-        plt.hist(g["MMSE"].dropna(), bins=bins)
-        plt.title(f"Distribución de MMSE - {diag} (n={len(g)})")
-        plt.xlabel("MMSE")
-        plt.ylabel("Frecuencia")
-        plt.savefig(Path.cwd() / f"hist_mmse_{diag}.png", dpi=200)
-
-def plot_distribuciones_objetivo(df: pd.DataFrame, diagnosis_objetivo: str) -> None:
-    """
-    Dibuja histogramas solo para el diagnóstico objetivo (más rápido si no quieres todo).
-    """
-    g = df[df["Diagnosis"] == diagnosis_objetivo]
-    if g.empty:
-        print(f"[WARN] No hay datos para Diagnosis='{diagnosis_objetivo}'. No se pueden plotear distribuciones.")
-        return
-
-    plt.figure()
-    plt.hist(g["Age"].dropna(), bins=15)
-    plt.title(f"Distribución de Age - {diagnosis_objetivo} (n={len(g)})")
-    plt.xlabel("Age")
-    plt.ylabel("Frecuencia")
-    plt.savefig(Path.cwd() / f"dist_age_{diagnosis_objetivo}.png", dpi=200)
-
-    plt.figure()
-    bins = np.arange(-0.5, 30.5 + 1, 1)
-    plt.hist(g["MMSE"].dropna(), bins=bins)
-    plt.title(f"Distribución de MMSE - {diagnosis_objetivo} (n={len(g)})")
-    plt.xlabel("MMSE")
-    plt.ylabel("Frecuencia")
-    plt.savefig(Path.cwd() / f"dist_mmse_{diagnosis_objetivo}.png", dpi=200)
-
-def plot_relacion_age_mmse(df: pd.DataFrame, out_dir: Path | None = None) -> None:
-    """
-    Plots para ver relación Age vs MMSE:
-    - Global: scatter + tendencia lineal
-    - Por diagnóstico: scatter (alpha) + tendencia lineal
-    Guarda PNGs si out_dir se especifica (si no, usa cwd).
-    """
-    if out_dir is None:
-        out_dir = Path.cwd()
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Asegurar numéricos
-    dfp = df.copy()
-    dfp["Age"] = pd.to_numeric(dfp["Age"], errors="coerce")
-    dfp["MMSE"] = pd.to_numeric(dfp["MMSE"], errors="coerce")
-    dfp = dfp.dropna(subset=["Age", "MMSE", "Diagnosis"])
-
-    # --- Plot GLOBAL ---
-    plt.figure()
-    x = dfp["Age"].to_numpy()
-    y = dfp["MMSE"].to_numpy()
-
-    plt.scatter(x, y, alpha=0.35, s=18)
-    # tendencia lineal simple
-    if len(x) >= 2:
-        m, b = np.polyfit(x, y, 1)
-        xs = np.linspace(x.min(), x.max(), 200)
-        plt.plot(xs, m * xs + b, linewidth=2)
-
-    plt.title(f"Relación Age vs MMSE - GLOBAL (n={len(dfp)})")
-    plt.xlabel("Age")
-    plt.ylabel("MMSE")
-    plt.ylim(-0.5, 30.5)
-    plt.savefig(out_dir / "rel_age_mmse_GLOBAL.png", dpi=200, bbox_inches="tight")
-
-    # --- Plot POR DIAGNÓSTICO ---
-    diagnosticos = sorted(dfp["Diagnosis"].unique())
-    for diag in diagnosticos:
-        g = dfp[dfp["Diagnosis"] == diag]
-        if g.empty:
-            continue
-
-        plt.figure()
-        x = g["Age"].to_numpy()
-        y = g["MMSE"].to_numpy()
-
-        plt.scatter(x, y, alpha=0.4, s=22)
-
-        # tendencia lineal (opcional)
-        if len(x) >= 2:
-            m, b = np.polyfit(x, y, 1)
-            xs = np.linspace(x.min(), x.max(), 200)
-            plt.plot(xs, m * xs + b, linewidth=2)
-
-        plt.title(f"Relación Age vs MMSE - {diag} (n={len(g)})")
-        plt.xlabel("Age")
-        plt.ylabel("MMSE")
-        plt.ylim(-0.5, 30.5)
-        plt.savefig(out_dir / f"rel_age_mmse_{diag}.png", dpi=200, bbox_inches="tight")
+    return output_budget
 
 # =========== LÓGICA DEL PROGRAMA : GENERACIÓN DEL TARGET A GENERAR, BÚSQUEDA DE SUS VECINOS Y GENERACIÓN DEL DIÁLOGO SINTÉTICO =========== #
 def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: str, n_samples: int, seed: int,) -> list[dict]:
@@ -418,17 +281,17 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     return df_filtrado.sort_values("dist").head(k)
 
-def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFrame,ctx_size: int,zero_shot: bool = False,) -> str | None:
+def generar_dialogo_paciente(dataset_name: str,target: dict, vecinos: pd.DataFrame,max_output_tokens: int,zero_shot: bool = False) -> str | None:
     """Wrapper de compatibilidad: delega en el backend de Gemini."""
     return generar_dialogo_paciente_prompt(
         dataset_name=dataset_name,
         target=target,
         vecinos=vecinos,
-        ctx_size=ctx_size,
         basic=BASIC,
         model_name=MODEL_NAME,
         api_key=GEMINI_API_KEY,
         cookie_theft_image_path=COOKIE_THEFT_IMAGE_PATH,
+        max_output_tokens=max_output_tokens,
         token_counter=contar_tokens_reales,
         zero_shot=zero_shot,
     )
@@ -447,12 +310,15 @@ def main() -> None:
 
     # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
     df_real, conteo_raw = cargar_datos(INPUT_PATH)
-    load_cookie_theft_image_inline(COOKIE_THEFT_IMAGE_PATH)
 
     prompt_spec = get_prompt_spec(dataset)
+    use_cookie_theft_image = prompt_spec.uses_cookie_theft_image
+    if use_cookie_theft_image:
+        load_cookie_theft_image_inline(COOKIE_THEFT_IMAGE_PATH)
     if is_zero_shot and prompt_spec.zero_shot_user_template is None:
         sys.exit(f"El dataset '{dataset}' no define plantillas zero-shot en prompt_system.py")
     print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
+    print(f"[INFO] Modalidad Gemini: {'multimodal con imagen Cookie Theft' if use_cookie_theft_image else 'solo texto'}")
     print(f"[INFO] Modo de generación: {'zero-shot' if is_zero_shot else 'few-shot'}")
     
     if slice_pct == 0:
@@ -478,15 +344,12 @@ def main() -> None:
         print("\n[FULL-REAL MODE] Slice del 100%. No hace falta generar datos sintéticos.")
         for diag in list(conteo_raw.keys()):
             conteo_raw[diag] = 0
-    
-    # Plot de distribuciones 
-    # plot_distribuciones_por_diagnostico(df_real)
-    # plot_relacion_age_mmse(df_real)
-    # o solo el diagnóstico objetivo:
-    # plot_distribuciones_objetivo(df_real, DIAG_OBJETIVO)
-
     # Calculamos stats 
-    stats, recommended_ctx = analizar_estadisticas(df_real,conteo_raw,zero_shot=is_zero_shot,)
+    stats = analizar_estadisticas(df_real, conteo_raw)
+    output_budget = calcular_presupuesto_salida_gemini(
+        df_real,
+        has_image_input=use_cookie_theft_image,
+    )
     
     writer = None
     if SAVE:
@@ -533,7 +396,7 @@ def main() -> None:
                     dataset,
                     target,
                     vecinos,
-                    recommended_ctx,
+                    output_budget,
                     zero_shot=is_zero_shot,
                 )
                 

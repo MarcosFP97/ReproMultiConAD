@@ -42,6 +42,8 @@ class PromptSpec:
     zero_shot_user_template: str | None = None
     zero_shot_rules: tuple[str, ...] | None = None
     generation_options: dict[str, Any] = field(default_factory=dict)
+    ollama_generation_options: dict[str, Any] = field(default_factory=dict)
+    uses_cookie_theft_image: bool = False
 
 
 def validate_chat(texto: str | None) -> bool:
@@ -210,6 +212,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         generation_options={
             "temperature": 1.0,
         },
+        uses_cookie_theft_image=True,
                 ),
     # IVANOVA
     "ivanova": PromptSpec(
@@ -308,11 +311,12 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         ),
         generation_options={
             "temperature": 0.35, 
-            "max_output_tokens": 220,
-            # Nota: repeat_penalty no es universal; los backends que no lo soporten pueden ignorarlo.
-            "repeat_penalty": 1.25,
             "top_p": 0.9,
             "top_k": 40,
+        },
+        ollama_generation_options={
+            "max_output_tokens": 220,
+            "repeat_penalty": 1.25,
         },
                 ),
     # DEFAULT
