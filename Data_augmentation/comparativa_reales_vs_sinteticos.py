@@ -7,7 +7,7 @@ import os
 # ============================================================
 RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
 DATASETS = ["ivanova", "pitt"]
-MODES = ["binary", "multiclass"]  # <--- Nuevo: Soporte para ambos modos
+MODES = ["binary", "multiclass"]  # <--- Soporte para ambos modos
 METRICS_MAP = {
     "Accuracy": "Accuracy",
     "MacroF1": "Macro_f1"
@@ -49,22 +49,23 @@ for ds in DATASETS:
             synth_y = []
             for p in X_SYNTHETIC:
                 # El nombre del archivo ahora incluye la variable {mode}
-                file_path = os.path.join(RESULTS_DIR, f"balancedBERT_Synthetic_{ds}_{p}_{mode}.xlsx")
+                file_path = os.path.join(RESULTS_DIR, f"balancedBERT_{ds}_{p}_{mode}_GEMINI.xlsx")
                 synth_y.append(get_metric_from_excel(file_path, col_name))
             
             plt.plot(X_SYNTHETIC, synth_y, marker='s', linestyle='--', linewidth=2, 
                      label=f'Reales + Sintéticos (Augmented - {mode})', color='#e74c3c')
 
             # Estética de la gráfica
-            plt.title(f"Impacto Aumento Datos - {ds.upper()} ({mode.capitalize()}) - {label}", fontsize=14, fontweight='bold')
+            plt.title(f"Impacto Aumento Datos con Gemini - {ds.upper()} ({mode.capitalize()}) - {label}", fontsize=14, fontweight='bold')
             plt.xlabel("Porcentaje de Datos Reales utilizados (%)", fontsize=12)
             plt.ylabel(label, fontsize=12)
             plt.xticks([0, 20, 40, 60, 80, 100])
+            plt.ylim(0, 1)
             plt.grid(True, linestyle=':', alpha=0.6)
             plt.legend()
             
             # Guardar incluyendo el modo en el nombre del archivo
-            output_name = f"plot_{ds}_{mode}_{label}.png"
+            output_name = f"plot_{ds}_{mode}_{label}_GEMINI.png"
             plt.savefig(os.path.join(RESULTS_DIR, output_name))
             print(f"[SAVE] Gráfica guardada: {output_name}")
             plt.close()

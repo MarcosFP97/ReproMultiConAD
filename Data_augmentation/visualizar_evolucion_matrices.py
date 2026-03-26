@@ -71,7 +71,7 @@ for dataset in DATASETS:
             col = i
             ax = axes[1, col]
 
-            path = os.path.join(RESULTS_DIR, f"balancedBERT_Synthetic_{dataset}_{p}_{mode}.xlsx")
+            path = os.path.join(RESULTS_DIR, f"balancedBERT_{dataset}_{p}_{mode}_GEMINI.xlsx")
             cm = load_cm(path)
 
             ax.axis("on")
@@ -90,7 +90,7 @@ for dataset in DATASETS:
             ax.set_ylabel("Real")
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.93])
-        output_name = f"evolucion_matrices_{dataset}_{mode}.png"
+        output_name = f"evolucion_matrices_{dataset}_{mode}_GEMINI.png"
         plt.savefig(os.path.join(RESULTS_DIR, output_name), dpi=300)
         plt.close()
 

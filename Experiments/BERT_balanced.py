@@ -33,14 +33,16 @@ from tqdm import tqdm
 # Configuración de los argumentos de entrada
 parser = argparse.ArgumentParser(description="Entrenamiento de BERT con slices de datos")
 parser.add_argument("--dataset", type=str, required=True, help="Nombre del dataset (ej: ivanova, pitt)")
+parser.add_argument("--task", type=str, required=True, help="Tipo de tarea (ej: binary/multiclass)")
 parser.add_argument("--percentage", type=int, required=True, help="Porcentaje del slice (ej: 20, 40, 60, 80)")
 args = parser.parse_args()
 
 # Asignamos los argumentos a variables para usarlas en la config
 dataset = args.dataset
 percentage = args.percentage
+task = args.task
 
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}.jsonl"
+TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}_synthetic_GEMINI.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
 OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_{percentage}_patient_classifier_len256"
 
@@ -57,7 +59,11 @@ BATCH_SIZE = 16
 LR         = 5e-5
 EPOCHS     = 3
 
-DROP_LABEL_VALUE = None   # quitamos MCI para binario
+if task=="binary":
+    DROP_LABEL_VALUE = "MCI" 
+else:
+    DROP_LABEL_VALUE = None
+    
 VERBOSE = True             # False si queremos menos prints
 
 
@@ -523,7 +529,7 @@ def main():
 
     ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"balancedBERT_{dataset}_{percentage}_{task_name}.xlsx")
+    out_xlsx = os.path.join(results_dir, f"balancedBERT_{dataset}_{percentage}_{task_name}_GEMINI.xlsx")
 
     save_results_excel(
         out_xlsx,

@@ -170,7 +170,7 @@ def calcular_presupuesto_salida_gemini(df: pd.DataFrame, has_image_input: bool =
     p95_tokens = df["real_tokens"].quantile(0.95)
 
     output_multiplier = 3.0 if has_image_input else 1.5
-    output_budget = max(int(math.ceil(p95_tokens * output_multiplier)), 1000)
+    output_budget = max(int(math.ceil(p95_tokens * output_multiplier)), 4096)
 
     print("\n--- PRESUPUESTO DE SALIDA GEMINI ---")
     print(f"Media tokens/transcripción: {avg_tokens:.0f}")
