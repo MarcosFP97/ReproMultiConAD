@@ -24,7 +24,7 @@ MultiConAD proporciona la base inicial para:
 - unificar metadatos clínicos y demográficos;
 - evaluar modelos en escenarios monolingües y multilingües.
 
-Este TFG reutiliza esa infraestructura, pero restringe el estudio a **inglés y español** para analizar con más control la transferencia entre idiomas, tareas cognitivas y datasets.
+Este TFG reutiliza parte de esa infraestructura, pero restringe el estudio a **inglés y español** para analizar con más control la transferencia entre idiomas, tareas cognitivas y datasets.
 
 Referencia original: <https://arxiv.org/abs/2502.19208>
 
@@ -76,7 +76,6 @@ Se entrenan modelos BERT para:
 
 - clasificación binaria: `Dementia` vs `HC`;
 - clasificación multiclase: `Dementia`, `MCI`, `HC`;
-- entrenamiento balanceado con pesos de clase;
 - comparación entre inglés y español.
 
 Scripts relevantes:
@@ -103,7 +102,17 @@ Preprocessing_text/preprocess_language_features.py
 Experiments/BERT_tokenizer.py
 ```
 
-### 5. Aumento Sintético con LLMs
+### 5. Análisis pormenorizado de datasets
+
+Dada la heterogeneidad de las tareas presentes en los distintos datasets, se amplía el estudio mediante un análisis individual de cada uno de ellos.
+
+Estos datasets presentan un alto grado de desbalanceo entre clases, lo cual se observó previamente durante la ejecución de experimentos basados en TF-IDF. Este desbalanceo dificulta que los modelos aprendan adecuadamente las clases minoritarias.
+
+Para mitigar este problema, se aplican técnicas de balanceo de clases con el objetivo de mejorar la detección de dichas clases.
+
+A partir de este punto, los experimentos continúan sobre datasets individuales empleando modelos BERT, al tratarse de la arquitectura más avanzada entre las consideradas inicialmente.
+
+### 6. Aumento Sintético con LLMs
 
 Se generan conversaciones sintéticas para estudiar escenarios de bajo recurso y desbalance de clases. La generación se condiciona con variables como diagnóstico, edad, género, MMSE y ejemplos reales cercanos.
 
@@ -127,7 +136,7 @@ Data_augmentation/generacion_sintetica_mistral.py
 Data_augmentation/prompt_system.py
 ```
 
-### 6. Interpretabilidad
+### 7. Interpretabilidad
 
 Se usa SHAP para analizar qué partes del texto influyen en las predicciones de los modelos BERT.
 
@@ -135,7 +144,7 @@ Se usa SHAP para analizar qué partes del texto influyen en las predicciones de 
 Experiments/shap_analysis.py
 ```
 
-### 7. Análisis Cross-Dataset
+### 8. Análisis Cross-Dataset
 
 Como experimento final, se estudia la transferencia entre datasets: entrenar un modelo en un corpus y evaluarlo sobre el test de otro corpus que comparta una tarea cognitiva comparable.
 
@@ -152,15 +161,14 @@ infer_bert_patient.py
 ## Estructura del Repositorio
 
 ```text
-MultiConAD/
-├── Audio_transcription/       # Transcripción automática de audio
-├── Data_augmentation/         # Generación sintética con Gemini y Mistral
-├── Experiments/               # TF-IDF, E5, BERT, SHAP y evaluación
-├── Extracting_data/           # Extracción y normalización de datos
-├── Markers_analysis/          # Análisis de pausas, reformulaciones y diagnósticos
-├── Metadata_integration/      # Integración de metadatos
-├── Preprocessing_text/        # Limpieza textual y marcas CHAT
-├── Translation/               # Traducción automática heredada de MultiConAD
+ConvoCognition/
+├── audio_transcription/       # Transcripción automática de audio
+├── data_augmentation/         # Generación sintética con Gemini y Mistral
+├── experiments/               # TF-IDF, E5, BERT, SHAP y evaluación
+├── extracting_data/           # Extracción y normalización de datos
+├── markers_analysis/          # Análisis de pausas, reformulaciones y diagnósticos
+├── metadata_integration/      # Integración de metadatos
+├── preprocessing_text/        # Limpieza textual y marcas CHAT
 ├── scripts/                   # Lanzadores SLURM para cluster
 └── infer_bert_patient.py      # Evaluación por dataset / transferencia
 ```
@@ -203,8 +211,6 @@ Para ejecutar el proyecto en otra máquina, es necesario adaptar rutas de entrad
 ---
 
 ## Cita de MultiConAD
-
-Este repositorio deriva del código y pipeline de MultiConAD. La cita:
 
 ```bibtex
 @misc{shakeri2025multiconadunifiedmultilingualconversational,
