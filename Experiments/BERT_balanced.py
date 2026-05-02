@@ -18,7 +18,7 @@ from transformers import BertTokenizer, BertForSequenceClassification, AutoToken
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
 from tqdm import tqdm
-
+import random
 
 # ============================================================
 # CONFIG
@@ -35,16 +35,26 @@ parser = argparse.ArgumentParser(description="Entrenamiento de BERT con slices d
 parser.add_argument("--dataset", type=str, required=True, help="Nombre del dataset (ej: ivanova, pitt)")
 parser.add_argument("--task", type=str, required=True, help="Tipo de tarea (ej: binary/multiclass)")
 parser.add_argument("--percentage", type=int, required=True, help="Porcentaje del slice (ej: 20, 40, 60, 80)")
+parser.add_argument("--seed", type=int, default=42, help="Random seed")
 args = parser.parse_args()
 
 # Asignamos los argumentos a variables para usarlas en la config
 dataset = args.dataset
 percentage = args.percentage
 task = args.task
+seed = args.seed
 
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}_synthetic_GEMINI.jsonl"
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+#TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}.jsonl"
+TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{dataset}_{percentage}_patient_classifier_len256"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/PRUEBAFINAL_{task}_{dataset}_patient_classifier"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
@@ -169,7 +179,7 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     df["label"] = label_encoder.transform(df[label_col])
     return df
 
-def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
+def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=seed):
     """
     Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
     stratify mantiene proporciones de clase.
@@ -438,6 +448,8 @@ def main():
         load_best_model_at_end=True, # Se queda con el mejor modelo según validación
         logging_dir='./logs',
         logging_steps=10,
+        seed=seed,
+        data_seed=seed
     )
 
     trainer = CustomTrainer(
@@ -529,7 +541,7 @@ def main():
 
     ################## Excel ######################
     task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"balancedBERT_{dataset}_{percentage}_{task_name}_GEMINI.xlsx")
+    out_xlsx = os.path.join(results_dir, f"512FINAL_{task}_{dataset}.xlsx")
 
     save_results_excel(
         out_xlsx,

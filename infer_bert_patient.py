@@ -7,14 +7,15 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
-MODEL_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_ivanova_100_patient_classifier_len256"
+MODEL_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/512FINAL_multiclass_pitt_patient_classifier"
 DATA_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"
 DATASETS = [
-    "test_delaware.jsonl",
-    "test_lu.jsonl",
-    "test_taukadial.jsonl",
-    "test_vas.jsonl",
-    "test_wls.jsonl",
+    "test_pitt.jsonl", # hc/dementia/mci
+    "test_delaware.jsonl", # hc/mci
+    "test_lu.jsonl", # hc/dementia/mci
+    "test_taukadial.jsonl", # hc/mci
+    "test_vas.jsonl", # hc/dementia/mci
+    "test_wls.jsonl", # hc/dementia
 ]
 MAX_LENGTH = 256
 BATCH_SIZE = 16
@@ -44,10 +45,19 @@ def load_model_and_tokenizer():
                 continue
             parsed_id2label[idx] = str(value)
 
-    if len(parsed_id2label) >= 3:
-        id2label = parsed_id2label
+    use_fallback = False
+
+    if len(parsed_id2label) < 3:
+        use_fallback = True
     else:
+        values = [parsed_id2label.get(i, "") for i in range(3)]
+        if values == ["LABEL_0", "LABEL_1", "LABEL_2"]:
+            use_fallback = True
+
+    if use_fallback:
         id2label = FALLBACK_ID2LABEL.copy()
+    else:
+        id2label = {i: parsed_id2label.get(i, FALLBACK_ID2LABEL[i]) for i in range(3)}
 
     return tokenizer, model, device, id2label
 
@@ -253,6 +263,10 @@ def main():
     print(f"Data dir: {DATA_DIR}")
     print(f"Datasets: {DATASETS}")
     print(f"id2label used: {id2label}")
+    
+    print("[LABEL MAPPING]")
+    for idx in sorted(id2label):
+        print(f"  {idx} -> {id2label[idx]}")
 
     all_true = []
     all_pred = []
