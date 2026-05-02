@@ -17,8 +17,8 @@ class CHACollection(Collection):
                 if filename.endswith(".cha"):
                     file_path = os.path.join(root, filename)
 
-                    if self.language in ["english", "chinese"]:
-                        yield from self.parse_cha_file(file_path, self._parse_line_english_chinese)
+                    if self.language == "english":
+                        yield from self.parse_cha_file(file_path, self._parse_line_english)
                     elif self.language == "spanish":
                         yield from self.parse_cha_file(file_path, self._parse_line_spanish)
                     else:
@@ -72,7 +72,7 @@ class CHACollection(Collection):
 
         yield info
     
-    def _parse_line_english_chinese(self, info: dict, line: str,file_path: str): # Chinese Lu datset from DementiaBank
+    def _parse_line_english(self, info: dict, line: str,file_path: str):
         """
         Language-specific line parser for English.
         """
@@ -280,7 +280,6 @@ if __name__ == '__main__':
     
     #collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
     collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
-    #collection = CHACollection(path_to_cha_files,language="chinese",enricher=enricher) #NOTE De momento no usamos el chino para nuestro experimento    
     
     # Making the file name for the output file
     output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
@@ -307,7 +306,6 @@ if __name__ == '__main__':
     
 
     
-
 
 
 

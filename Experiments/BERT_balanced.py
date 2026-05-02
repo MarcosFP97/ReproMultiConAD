@@ -18,48 +18,161 @@ from transformers import BertTokenizer, BertForSequenceClassification, AutoToken
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
 from tqdm import tqdm
-import random
 
 # ============================================================
 # CONFIG
 # ============================================================
 
-#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl"
-#TEST_PATH  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl"
-#OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_english_patient_classifier_len256"
+DATA_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
+MODEL_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models"
+RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results"
+SPANISH_DATASETS = {"ivanova", "perla"}
 
-#TRAIN_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/ivanova_augmented.jsonl"
-
-# Configuración de los argumentos de entrada
-parser = argparse.ArgumentParser(description="Entrenamiento de BERT con slices de datos")
-parser.add_argument("--dataset", type=str, required=True, help="Nombre del dataset (ej: ivanova, pitt)")
-parser.add_argument("--task", type=str, required=True, help="Tipo de tarea (ej: binary/multiclass)")
-parser.add_argument("--percentage", type=int, required=True, help="Porcentaje del slice (ej: 20, 40, 60, 80)")
-parser.add_argument("--seed", type=int, default=42, help="Random seed")
+parser = argparse.ArgumentParser(
+    description="Entrenamiento BERT balanceado para experimentos individual, cross-dataset o sintéticos."
+)
+parser.add_argument(
+    "--mode",
+    type=str,
+    choices=["individual", "cross", "synthetic"],
+    default="individual",
+    help="Diseño experimental: individual, cross o synthetic.",
+)
+parser.add_argument(
+    "--train-dataset",
+    type=str,
+    required=True,
+    help="Dataset usado para entrenar (ej: ivanova, pitt, taukadial).",
+)
+parser.add_argument(
+    "--test-dataset",
+    type=str,
+    default=None,
+    help="Dataset usado para evaluar. Obligatorio en mode=cross; opcional en synthetic.",
+)
+parser.add_argument(
+    "--task",
+    type=str,
+    required=True,
+    choices=["binary", "multiclass"],
+    help="Tipo de tarea.",
+)
+parser.add_argument(
+    "--train-source",
+    type=str,
+    choices=["real", "synthetic", "augmented"],
+    default="augmented",
+    help="Fuente de entrenamiento en mode=synthetic: real, synthetic o augmented.",
+)
+parser.add_argument(
+    "--real-percentage",
+    type=int,
+    default=None,
+    help="Porcentaje de datos reales que se usan en mode=synthetic.",
+)
+parser.add_argument(
+    "--synthetic-percentage",
+    type=int,
+    default=None,
+    help="Porcentaje de datos sintéticos que se usan en mode=synthetic.",
+)
+parser.add_argument(
+    "--synthetic-source",
+    type=str,
+    choices=["mistral", "gemini"],
+    default="mistral",
+    help="LLM usado para los ficheros sintéticos en mode=synthetic.",
+)
 args = parser.parse_args()
 
-# Asignamos los argumentos a variables para usarlas en la config
-dataset = args.dataset
-percentage = args.percentage
+mode = args.mode
+train_dataset = args.train_dataset.strip().lower()
+test_dataset = args.test_dataset.strip().lower() if args.test_dataset else None
 task = args.task
-seed = args.seed
+train_source = args.train_source
 
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+if mode == "cross" and not test_dataset:
+    parser.error("--test-dataset es obligatorio cuando --mode cross.")
 
-#TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{percentage}.jsonl"
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl"
-TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/test_{dataset}.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/PRUEBAFINAL_{task}_{dataset}_patient_classifier"
+if mode != "synthetic":
+    if args.real_percentage is not None or args.synthetic_percentage is not None:
+        parser.error("--real-percentage y --synthetic-percentage solo deben usarse con --mode synthetic.")
+
+if args.real_percentage is not None and not 0 <= args.real_percentage <= 100:
+    parser.error("--real-percentage debe estar en el rango 0..100.")
+
+if args.synthetic_percentage is not None and not 0 <= args.synthetic_percentage <= 100:
+    parser.error("--synthetic-percentage debe estar en el rango 0..100.")
+
+
+def real_train_path(dataset_name: str, percentage: int) -> str:
+    if percentage == 100:
+        return os.path.join(DATA_ROOT, "individual_sets", f"train_{dataset_name}.jsonl")
+    return os.path.join(DATA_ROOT, "synthetic_data", "slices", f"train_{dataset_name}_real{percentage}.jsonl")
+
+
+def synthetic_train_path(dataset_name: str, percentage: int, source: str) -> str:
+    return os.path.join(DATA_ROOT, "synthetic_data", "slices", f"train_{dataset_name}_synthetic{percentage}_{source}.jsonl")
+
+if mode == "individual":
+    test_dataset = train_dataset
+    TRAIN_PATHS = [os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl")]
+    TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
+    EXPERIMENT_ID = f"bert_balanced_individual_{task}_{train_dataset}"
+elif mode == "cross":
+    TRAIN_PATHS = [os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl")]
+    TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
+    EXPERIMENT_ID = f"bert_balanced_cross_{task}_train-{train_dataset}_test-{test_dataset}"
+else:
+    test_dataset = test_dataset or train_dataset
+
+    if train_source == "real":
+        if args.real_percentage is None:
+            parser.error("--real-percentage es obligatorio con --train-source real.")
+        if args.synthetic_percentage is not None:
+            parser.error("--synthetic-percentage no debe usarse con --train-source real.")
+        real_percentage = args.real_percentage
+        synthetic_percentage = None
+        TRAIN_PATHS = [real_train_path(train_dataset, real_percentage)]
+        EXPERIMENT_ID = f"bert_balanced_real_{task}_{train_dataset}_real{real_percentage}"
+
+    elif train_source == "synthetic":
+        if args.synthetic_percentage is None:
+            parser.error("--synthetic-percentage es obligatorio con --train-source synthetic.")
+        if args.real_percentage is not None:
+            parser.error("--real-percentage no debe usarse con --train-source synthetic.")
+        real_percentage = None
+        synthetic_percentage = args.synthetic_percentage
+        TRAIN_PATHS = [synthetic_train_path(train_dataset, synthetic_percentage, args.synthetic_source)]
+        EXPERIMENT_ID = f"bert_balanced_synthetic_{args.synthetic_source}_{task}_{train_dataset}_synthetic{synthetic_percentage}"
+
+    else:
+        if args.real_percentage is None or args.synthetic_percentage is None:
+            parser.error("--real-percentage y --synthetic-percentage son obligatorios con --train-source augmented.")
+        real_percentage = args.real_percentage
+        synthetic_percentage = args.synthetic_percentage
+        if real_percentage + synthetic_percentage != 100:
+            parser.error("En --train-source augmented, real-percentage + synthetic-percentage debe sumar 100.")
+
+        TRAIN_PATHS = []
+        if real_percentage > 0:
+            TRAIN_PATHS.append(real_train_path(train_dataset, real_percentage))
+        if synthetic_percentage > 0:
+            TRAIN_PATHS.append(synthetic_train_path(train_dataset, synthetic_percentage, args.synthetic_source))
+
+        EXPERIMENT_ID = (
+            f"bert_balanced_augmented_{args.synthetic_source}_{task}_{train_dataset}"
+            f"_real{real_percentage}_synthetic{synthetic_percentage}"
+        )
+
+    TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
+
+OUTPUT_DIR = os.path.join(MODEL_ROOT, EXPERIMENT_ID)
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
 
-if dataset == "ivanova":
+if train_dataset in SPANISH_DATASETS:
     MODEL_NAME = "dccuchile/bert-base-spanish-wwm-cased"
 else:
     MODEL_NAME = "bert-base-uncased"
@@ -123,8 +236,12 @@ class ClassificationDataset(Dataset):
 # ============================================================
 # 2) DATA PREP
 # ============================================================
-def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
-    df = pd.read_json(path, lines=True)
+def load_and_prepare_df(paths, text_col, label_col, drop_label_value=None):
+    if isinstance(paths, (list, tuple)):
+        frames = [pd.read_json(path, lines=True) for path in paths]
+        df = pd.concat(frames, ignore_index=True)
+    else:
+        df = pd.read_json(paths, lines=True)
 
     # Nos quedamos SOLO con lo que necesitamos
     df = df[[label_col, text_col]].copy()
@@ -179,7 +296,7 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     df["label"] = label_encoder.transform(df[label_col])
     return df
 
-def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=seed):
+def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2):
     """
     Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
     stratify mantiene proporciones de clase.
@@ -208,7 +325,6 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
             df[text_col].values,
             labels,
             test_size=test_size,
-            random_state=random_state,
             stratify=stratify_labels,
         )
     except ValueError as e:
@@ -219,7 +335,6 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
                 df[text_col].values,
                 labels,
                 test_size=test_size,
-                random_state=random_state,
                 stratify=None,
             )
         else:
@@ -390,7 +505,11 @@ def main():
 
     # 1) Cargar datos
     print("\n[STEP 1] Loading train/test data (jsonl) and selecting needed columns...")
-    train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
+    print("[DATA] Train paths:")
+    for path in TRAIN_PATHS:
+        print(f"  - {path}")
+    print(f"[DATA] Test path: {TEST_PATH}")
+    train_df = load_and_prepare_df(TRAIN_PATHS, TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
 
@@ -428,9 +547,9 @@ def main():
 
     # 6) Datasets de Hugging Face (ya no usamos DataLoaders manuales)
     print("\n[STEP 6] Building Datasets for Trainer...")
-    train_dataset = ClassificationDataset(train_texts, train_labels, tokenizer, MAX_LEN)
-    val_dataset   = ClassificationDataset(val_texts, val_labels, tokenizer, MAX_LEN)
-    test_dataset  = ClassificationDataset(test_df[TEXT_COL].values, test_df["label"].values, tokenizer, MAX_LEN)
+    train_hf_dataset = ClassificationDataset(train_texts, train_labels, tokenizer, MAX_LEN)
+    val_hf_dataset   = ClassificationDataset(val_texts, val_labels, tokenizer, MAX_LEN)
+    test_hf_dataset  = ClassificationDataset(test_df[TEXT_COL].values, test_df["label"].values, tokenizer, MAX_LEN)
 
     # 7) Modelo y Configuración del Trainer
     print("\n[STEP 7] Building model and CustomTrainer...")
@@ -448,15 +567,13 @@ def main():
         load_best_model_at_end=True, # Se queda con el mejor modelo según validación
         logging_dir='./logs',
         logging_steps=10,
-        seed=seed,
-        data_seed=seed
     )
 
     trainer = CustomTrainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
+        train_dataset=train_hf_dataset,
+        eval_dataset=val_hf_dataset,
         compute_metrics=compute_metrics, # <--- AÑADIDO
         class_weights=class_weights_tensor
     )
@@ -467,7 +584,7 @@ def main():
 
     # 9) Predicciones en TEST para tu Excel
     print("\n[STEP 9] Predicting on TEST set...")
-    predictions_output = trainer.predict(test_dataset)
+    predictions_output = trainer.predict(test_hf_dataset)
     
     # Extraer y_true, y_pred, y_probs para que no se rompa tu código de Excel
     y_true = predictions_output.label_ids
@@ -511,8 +628,7 @@ def main():
     # =========================
     # EXCEL: resumen del experimento
     # =========================
-    results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
-    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(RESULTS_DIR, exist_ok=True)
 
     # cosas útiles para guardar
     trunc_pct = compute_truncation_pct(train_df, tokenizer, TEXT_COL, MAX_LEN)
@@ -523,11 +639,18 @@ def main():
         "Batch_size": BATCH_SIZE,
         "LR": LR,
         "Epochs": EPOCHS,
+        "Mode": mode,
+        "Train_source": train_source if mode == "synthetic" else "",
+        "Train_dataset": train_dataset,
+        "Test_dataset": test_dataset,
+        "Real_percentage": args.real_percentage if mode == "synthetic" else "",
+        "Synthetic_percentage": args.synthetic_percentage if mode == "synthetic" else "",
+        "Synthetic_source": args.synthetic_source if mode == "synthetic" else "",
         "Drop_label_value": str(DROP_LABEL_VALUE),
         "Train_rows": len(train_df),
         "Test_rows": len(test_df),
         "Train_trunc_pct": trunc_pct,
-        "Train_path": TRAIN_PATH,
+        "Train_path": " | ".join(TRAIN_PATHS),
         "Test_path": TEST_PATH,
         "Output_dir": OUTPUT_DIR,
     }
@@ -540,8 +663,7 @@ def main():
     )
 
     ################## Excel ######################
-    task_name = "binary" if DROP_LABEL_VALUE is not None else "multiclass"
-    out_xlsx = os.path.join(results_dir, f"512FINAL_{task}_{dataset}.xlsx")
+    out_xlsx = os.path.join(RESULTS_DIR, f"{EXPERIMENT_ID}.xlsx")
 
     save_results_excel(
         out_xlsx,

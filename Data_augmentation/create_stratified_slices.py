@@ -45,7 +45,7 @@ def main(dataset: str = DATASET) -> None:
             columns="_percentile"
         )
 
-        output_path = OUTPUT_DIR / f"train_{dataset}_{percentage}.jsonl"
+        output_path = OUTPUT_DIR / f"train_{dataset}_real{percentage}.jsonl"
         subset.to_json(output_path, orient="records", lines=True, force_ascii=False)
 
         print(f"\nArchivo guardado: {output_path}")
@@ -56,7 +56,7 @@ def main(dataset: str = DATASET) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Genera subconjuntos estratificados anidados (20/40/60/80) desde train_{dataset}.jsonl"
+        description="Genera subconjuntos reales estratificados anidados desde train_{dataset}.jsonl"
     )
     parser.add_argument(
         "--dataset",

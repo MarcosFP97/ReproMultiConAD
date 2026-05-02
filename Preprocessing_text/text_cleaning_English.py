@@ -29,7 +29,7 @@ English_df = pd.read_json(os.path.join(output_directory, output_filename),lines=
 
 
 
-# Remove Chinese transcript from Taukdial
+# Taukadial incluye una parte en chino; se excluye para mantener el alcance EN/ES.
 def remove_zh_language_rows(df):
     return df[df['Languages'] != 'zh']
 
@@ -84,7 +84,8 @@ def preprocess_text(text):
     text = re.sub(r'\b[A-Z]{3}\b', '', text)
     text = re.sub(r'xxx', '', text)
     text = re.sub(r'<[^>]*>', '', text) 
-    text = re.sub(r'[\x15][0-9_]+[\x15]', ' ', text) # Elimina los códigos de tiempo de TalkBank (ej: 140_6514)
+    # Elimina los códigos de tiempo de TalkBank (ej: 140_6514) Se ha decidido quitar al introducir ruido en el texto para nuestro alcance, aunque se podría considerar mantenerlos para tareas de diarización o análisis temporal.
+    text = re.sub(r'[\x15][0-9_]+[\x15]', ' ', text) 
     # Remove qutation and all punctuation marks, in case of TF-IDF, for e5 you should comment out this part.
     if TFIDF :
         text = re.sub(r'[^\w\s]', '', text)
@@ -141,4 +142,3 @@ train_en, test_en = train_test_split(English_df, test_size=0.2,stratify=English_
 # Save train and test datasets as JSONL
 train_en.to_json(output_directory + "/train_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
 test_en.to_json(output_directory + "/test_english_e5.jsonl", orient="records", lines=True, force_ascii=False)
-

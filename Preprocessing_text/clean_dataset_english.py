@@ -24,7 +24,8 @@ os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 # HELPERS
 # =========================
 def remove_zh_language_rows(df):
-    # Si no existe la columna, no hace nada
+    # Taukadial incluye una parte en chino; se excluye para mantener el alcance EN/ES.
+    # Si no existe la columna, no hace nada.
     if "Languages" not in df.columns:
         return df
     return df[df["Languages"] != "zh"]

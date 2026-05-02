@@ -24,26 +24,40 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', required=True)
-parser.add_argument('--slice', type=int, required=True, help="Porcentaje de datos reales usados (ej: 0, 20, 40, 60, 80, 100)")
+parser.add_argument(
+    '--real-percentage',
+    dest='real_percentage',
+    type=int,
+    help="Porcentaje de datos reales usados como base (ej: 0, 20, 40, 60, 80, 100)",
+)
+parser.add_argument('--slice', dest='real_percentage', type=int, help=argparse.SUPPRESS)
 parser.add_argument('--self_check', action='store_true')
-#TODO
-parser.add_argument('--augmented', action='store_true', help="Genera solo las muestras faltantes para igualar a la clase mayoritaria")
+parser.add_argument('--augmented', action='store_true', help=argparse.SUPPRESS)
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
-slice_pct = args_slurm.slice
+real_pct = args_slurm.real_percentage
 
-if slice_pct < 0 or slice_pct > 100:
-    parser.error("--slice debe estar en el rango 0..100")
+if real_pct is None:
+    parser.error("--real-percentage es obligatorio")
 
-# --- Semántica de slice ---
-# slice=0  -> zero-shot (0% real)
-# slice<100 -> few-shot low-resource
-# slice=100 -> full-real (sin síntesis)
-is_zero_shot = (slice_pct == 0)
+if real_pct < 0 or real_pct > 100:
+    parser.error("--real-percentage debe estar en el rango 0..100")
+
+synthetic_pct = 100 - real_pct
+input_real_pct = 100 if real_pct == 0 else real_pct
+
+# --- Semántica ---
+# real=0   -> zero-shot: se genera synthetic100 sin usar ejemplos reales como contexto.
+# real<100 -> low-resource: se genera el complemento synthetic(100-real).
+# real=100 -> full-real: no hay síntesis.
+is_zero_shot = (real_pct == 0)
 
 # Configuracion basica
-INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_{slice_pct}_synthetic.jsonl")
+if input_real_pct == 100:
+    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
+else:
+    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_real{input_real_pct}.jsonl")
+OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_synthetic{synthetic_pct}_mistral.jsonl")
 MODEL_NAME = "mistral-small3.2"
 
 BASIC = False
@@ -332,29 +346,27 @@ def main() -> None:
     print(f"[INFO] Modo de generación: {'zero-shot' if is_zero_shot else 'few-shot'}")
     print(f"[INFO] Presupuesto de salida Ollama (num_predict): {ollama_output_budget}")
     
-    if slice_pct == 0:
-        print("\n[ZERO-SHOT MODE] Slice del 0%. No se usan datos reales como base de prompting.")
+    if real_pct == 0:
+        print("\n[ZERO-SHOT MODE] 0% real. No se usan datos reales como contexto de prompting.")
         for diag, count_real in conteo_raw.items():
             muestras_a_generar = count_real
             conteo_raw[diag] = muestras_a_generar
             print(
-                f"Slice del 0%. {diag} tiene {count_real} reales. "
-                f"Generando {muestras_a_generar} sintéticas equivalentes."
+                f"{diag} tiene {count_real} reales de referencia. "
+                f"Generando {muestras_a_generar} sintéticas para synthetic100."
             )
-    elif slice_pct < 100:
-        y_pct = 100 - slice_pct
-        print(f"\n[LOW-RESOURCE MODE] Slice del {slice_pct}%. Se generará el {y_pct}% faltante por clase.")
+    elif real_pct < 100:
+        print(f"\n[LOW-RESOURCE MODE] real{real_pct}. Se generará synthetic{synthetic_pct} por clase.")
         for diag, count_real in conteo_raw.items():
-            muestras_a_generar = int(count_real * (y_pct / slice_pct))
+            muestras_a_generar = int(count_real * (synthetic_pct / real_pct))
             conteo_raw[diag] = muestras_a_generar
             print(
-                f"Slice del {slice_pct}%. {diag} tiene {count_real} reales. "
-                f"Generando el {y_pct}% restante: {muestras_a_generar} sintéticas."
+                f"real{real_pct}. {diag} tiene {count_real} reales. "
+                f"Generando synthetic{synthetic_pct}: {muestras_a_generar} sintéticas."
             )
     else:
-        print("\n[FULL-REAL MODE] Slice del 100%. No hace falta generar datos sintéticos.")
-        for diag in list(conteo_raw.keys()):
-            conteo_raw[diag] = 0
+        print("\n[FULL-REAL MODE] real100. No se generan datos sintéticos.")
+        return
             
     # Calculamos stats 
     stats = analizar_estadisticas(df_real, conteo_raw)

@@ -29,8 +29,8 @@ for filename in tqdm(os.listdir(directory_path)):
             detected_language = result['language']
             transcription = result['text']
             
-            # Only append if the detected language is 'en' or 'zh'
-            if detected_language in ['en', 'zh']:
+            # Taukadial puede contener audio chino; aquí nos quedamos solo con inglés.
+            if detected_language == 'en':
                 results.append({
                     "file_name": os.path.splitext(filename)[0],
                     "transcription": transcription,

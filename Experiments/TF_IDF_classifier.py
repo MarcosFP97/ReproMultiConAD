@@ -30,19 +30,10 @@ test_en = pd.read_json(path_to_data_folder + "test_english.jsonl", lines=True)
 train_spa = pd.read_json(path_to_data_folder + "train_spanish.jsonl", lines=True)
 test_spa=pd.read_json(path_to_data_folder + "test_spanish.jsonl", lines=True)
 
-#----------------------------------- de momento estos no -----------------------------------------
-#train_gr = pd.read_json(path_to_data_folder+"/translated_train_gr.jsonl", lines=True)
-#train_cha = pd.read_json(path_to_data_folder + "/translated_train_cha.jsonl", lines=True)
-#test_gr= pd.read_json(path_to_data_folder + "/translated_test_gr.jsonl", lines=True)
-#test_cha= pd.read_json(path_to_data_folder + "/translated_test_cha.jsonl", lines=True)
-#------------------------------------------------------------------------------------------------
-
 # Multi-lingual training and testing
-#train_dfs = [train_en, train_gr, train_cha, train_spa]
+#train_dfs = [train_en, train_spa]
 #test_dfs = {
 #    'en': test_en,
-#    'gr': test_gr,
-#    'cha': test_cha,
 #    'spa': test_spa
 #}
 
@@ -352,4 +343,3 @@ print(f"Logging en: {log_path}\n")
 classify_language_dataset_TFIDF(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task,translated=args_slurm.translated)
 
 sys.stdout.close()
-
