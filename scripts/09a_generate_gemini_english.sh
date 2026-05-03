@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=GEN_Gemini_EN_ES_real_pct
+#SBATCH --job-name=GEN_Gemini_EN_real_pct
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40G
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/GEN_%x_%j.log
 
@@ -18,7 +18,7 @@ export LANG=C.UTF-8
 
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Data_augmentation/generacion_sintetica_gemini.py"
 
-for dataset in pitt ivanova; do
+for dataset in pitt; do
   for real_percentage in 0 20 40 60 80; do
     python -u "$SCRIPT_PATH" \
       --dataset "$dataset" \

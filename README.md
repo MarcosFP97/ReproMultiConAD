@@ -3,13 +3,12 @@
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
   <img alt="NLP" src="https://img.shields.io/badge/NLP-Clinical%20Language-5A4FCF?style=for-the-badge">
-  <img alt="Transformers" src="https://img.shields.io/badge/Transformers-BERT-FFCC00?style=for-the-badge">
+  <img alt="Transformers" src="https://img.shields.io/badge/HuggingFace-Transformers-FFCC00?style=for-the-badge&logo=huggingface&logoColor=black">
   <img alt="LLMs" src="https://img.shields.io/badge/LLMs-Gemini%20%7C%20Mistral-111827?style=for-the-badge">
+  <img alt="HPC" src="https://img.shields.io/badge/HPC-SLURM-ED1C24?style=for-the-badge">
 </p>
 
-Repositorio asociado a un Trabajo de Fin de Grado sobre **detección automática de deterioro cognitivo y Enfermedad de Alzheimer a partir de transcripciones conversacionales en inglés y español**.
-
-El proyecto parte del pipeline original de **MultiConAD: A Unified Multilingual Conversational Dataset for Early Alzheimer's Detection**, pero adapta el alcance a una investigación más concreta: análisis hispano-inglés, detección de MCI, estudio de marcas conversacionales CHAT, aumento sintético con LLMs y transferencia entre datasets.
+Repositorio del Trabajo de Fin de Grado sobre **detección automática de deterioro cognitivo y Enfermedad de Alzheimer a partir de transcripciones conversacionales en inglés y español**. El proyecto combina modelos clásicos (TF-IDF), representaciones densas (E5), modelos transformers (BERT), aumento sintético con LLMs e interpretabilidad con SHAP.
 
 > Este repositorio tiene fines de investigación. No constituye una herramienta clínica ni un sistema de diagnóstico médico.
 
@@ -17,144 +16,103 @@ El proyecto parte del pipeline original de **MultiConAD: A Unified Multilingual 
 
 ## Punto de Partida: MultiConAD
 
-MultiConAD proporciona la base inicial para:
+El proyecto parte del pipeline de **MultiConAD: A Unified Multilingual Conversational Dataset for Early Alzheimer's Detection** [[arXiv:2502.19208]](https://arxiv.org/abs/2502.19208), que proporciona la infraestructura base para:
 
-- normalizar datasets conversacionales relacionados con demencia;
-- trabajar con transcripciones textuales y datos derivados de audio;
+- normalizar datasets conversacionales sobre demencia;
 - unificar metadatos clínicos y demográficos;
 - evaluar modelos en escenarios monolingües y multilingües.
 
-Este TFG reutiliza parte de esa infraestructura, pero restringe el estudio a **inglés y español** para analizar con más control la transferencia entre idiomas, tareas cognitivas y datasets.
-
-Referencia original: <https://arxiv.org/abs/2502.19208>
+Este TFG restringe el estudio a **inglés y español**, incorporando análisis por dataset, marcas CHAT, aumento sintético y transferencia cross-dataset.
 
 ---
 
-## Qué Aporta Este TFG
+## Datasets
 
-Las aportaciones principales de esta investigación son:
+| Dataset | Idioma | Tarea | Clases |
+|---|---|---|---|
+| Pitt (DementiaBank) | Inglés | Cookie Theft | HC, MCI, Dementia |
+| Delaware | Inglés | Varias | HC, MCI, Dementia |
+| Lu | Inglés | Varias | HC, Dementia |
+| TAUKADIAL | Inglés | Picture description | HC, Dementia |
+| VAS | Inglés | Varias | HC, MCI |
+| WLS | Inglés | Varias | HC, Dementia |
+| Ivanova | Español | Varias | HC, MCI, Dementia |
 
-- evaluación específica en **inglés y español**;
-- comparación entre clasificación **binaria** y **multiclase**;
-- atención especial a la clase **MCI**, por ser la más difícil y clínicamente relevante;
-- análisis por dataset para estudiar el efecto de la heterogeneidad de tareas;
-- uso de marcas **CHAT** como señales estructurales de pausas, repeticiones y reformulaciones;
-- aumento de datos mediante generación sintética con **Gemini** y **Mistral**;
-- análisis **cross-dataset**, entrenando en un dataset y evaluando en otro con la misma tarea para medir capacidad de transferencia.
+Los datos normalizados siguen el esquema `NormalizedDataPoint` en JSONL:
+
+```json
+{
+  "PID": "...", "Dataset": "Pitt", "Diagnosis": "Dementia",
+  "Age": 75, "Gender": "F", "MMSE": 21,
+  "Text_participant": "PAR: ..."
+}
+```
+
+Los datasets originales no se distribuyen en este repositorio. Para ejecutar el proyecto en otra máquina, adaptar las rutas en los scripts (o en `CLAUDE.md`).
+
+---
+
+## Pipeline
+
+```
+Ficheros CHAT (.cha)
+    │
+    ▼
+extracting_data/          ← Parseo y normalización a JSONL
+    │
+    ▼
+preprocessing_text/       ← Limpieza de texto + marcas CHAT → tokens especiales
+    │
+    ▼
+┌───────────────────────────────────────────────┐
+│               EXPERIMENTOS                     │
+│  TF-IDF baselines → E5 embeddings → BERT       │
+└───────────────────────────────────────────────┘
+    │
+    ▼
+data_augmentation/        ← Generación sintética (Gemini / Mistral)
+    │
+    ▼
+BERT_balanced.py          ← Entrenamiento con datos reales + sintéticos
+    │
+    ▼
+shap_analysis.py          ← Interpretabilidad
+infer_bert_patient.py     ← Análisis cross-dataset
+```
 
 ---
 
 ## Experimentos
 
-### 1. Baselines Clásicos
+| # | Experimento | Script principal |
+|---|---|---|
+| 1 | Baselines TF-IDF (SVM, RF, NB, DT, LR) | `experiments/TF_IDF_classifier.py` |
+| 2 | TF-IDF por dataset individual (balanceado/no) | `experiments/TF_IDF_single_classifier.py` |
+| 3 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
+| 4 | BERT binario y multiclase | `experiments/BERT_classification.py` |
+| 5 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
+| 6 | BERT con balanceo de clases | `experiments/BERT_balanced.py` |
+| 7 | Aumento sintético (0–80% datos reales) | `data_augmentation/generacion_sintetica_*.py` |
+| 8 | Interpretabilidad SHAP | `experiments/shap_analysis.py` |
+| 9 | Transferencia cross-dataset | `infer_bert_patient.py` |
 
-Se evalúan representaciones TF-IDF con clasificadores clásicos:
+### Marcas CHAT como tokens especiales
 
-- SVM;
-- Random Forest;
-- Naive Bayes;
-- Decision Tree;
-- Logistic Regression.
-
-Script principal:
-
-```bash
-python Experiments/TF_IDF_classifier.py --test_language en --task binary --translated no
-```
-
-### 2. Representaciones Densas
-
-Se incluyen experimentos con embeddings densos E5 para comparar frente a TF-IDF.
-
-```bash
-python Experiments/e5_larg_classifier.py --test_language spa --task binary --translated no
-```
-
-### 3. BERT Binario y Multiclase
-
-Se entrenan modelos BERT para:
-
-- clasificación binaria: `Dementia` vs `HC`;
-- clasificación multiclase: `Dementia`, `MCI`, `HC`;
-- comparación entre inglés y español.
-
-Scripts relevantes:
-
-```text
-Experiments/BERT_classification.py
-Experiments/BERT_balanced.py
-```
-
-### 4. BERT con Marcas CHAT
-
-Se estudia si conservar información estructural de las transcripciones mejora la detección. Las marcas CHAT se transforman en tokens especiales:
-
-| Fenómeno | Marca original | Token |
-| --- | --- | --- |
+| Fenómeno | Notación original | Token |
+|---|---|---|
 | Pausas | `(.)`, `(..)`, `(1.2)` | `[PAUSE]` |
 | Repeticiones | `[/]` | `[REP]` |
 | Reformulaciones | `[//]` | `[REF]` |
 
-Scripts relevantes:
+### Aumento sintético
 
-```text
-Preprocessing_text/preprocess_language_features.py
-Experiments/BERT_tokenizer.py
+La generación se condiciona con diagnóstico, edad, género, MMSE y ejemplos reales, probando proporciones de datos reales:
+
+```
+0% · 20% · 40% · 60% · 80% · 100%
 ```
 
-### 5. Análisis pormenorizado de datasets
-
-Dada la heterogeneidad de las tareas presentes en los distintos datasets, se amplía el estudio mediante un análisis individual de cada uno de ellos.
-
-Estos datasets presentan un alto grado de desbalanceo entre clases, lo cual se observó previamente durante la ejecución de experimentos basados en TF-IDF. Este desbalanceo dificulta que los modelos aprendan adecuadamente las clases minoritarias.
-
-Para mitigar este problema, se aplican técnicas de balanceo de clases con el objetivo de mejorar la detección de dichas clases.
-
-A partir de este punto, los experimentos continúan sobre datasets individuales empleando modelos BERT, al tratarse de la arquitectura más avanzada entre las consideradas inicialmente.
-
-### 6. Aumento Sintético con LLMs
-
-Se generan conversaciones sintéticas para estudiar escenarios de bajo recurso y desbalance de clases. La generación se condiciona con variables como diagnóstico, edad, género, MMSE y ejemplos reales cercanos.
-
-Modelos utilizados:
-
-- **Gemini**, mediante API;
-- **Mistral**, mediante Ollama en entorno HPC.
-
-Se comparan porcentajes de datos reales:
-
-```text
-0%, 20%, 40%, 60%, 80%, 100%
-```
-
-Scripts principales:
-
-```text
-Data_augmentation/create_stratified_slices.py
-Data_augmentation/generacion_sintetica_gemini.py
-Data_augmentation/generacion_sintetica_mistral.py
-Data_augmentation/prompt_system.py
-```
-
-### 7. Interpretabilidad
-
-Se usa SHAP para analizar qué partes del texto influyen en las predicciones de los modelos BERT.
-
-```text
-Experiments/shap_analysis.py
-```
-
-### 8. Análisis Cross-Dataset
-
-Como experimento final, se estudia la transferencia entre datasets: entrenar un modelo en un corpus y evaluarlo sobre el test de otro corpus que comparta una tarea cognitiva comparable.
-
-El objetivo es comprobar si el modelo aprende patrones generales de deterioro cognitivo o si se ajusta demasiado a características propias del dataset de entrenamiento.
-
-Script relacionado:
-
-```text
-infer_bert_patient.py
-```
+Modelos disponibles: **Gemini** (API) y **Mistral** (Ollama en HPC).
 
 ---
 
@@ -165,52 +123,70 @@ ConvoCognition/
 ├── audio_transcription/       # Transcripción automática de audio
 ├── data_augmentation/         # Generación sintética con Gemini y Mistral
 ├── experiments/               # TF-IDF, E5, BERT, SHAP y evaluación
-├── extracting_data/           # Extracción y normalización de datos
-├── markers_analysis/          # Análisis de pausas, reformulaciones y diagnósticos
-├── metadata_integration/      # Integración de metadatos
+├── extracting_data/           # Extracción y normalización de datos CHAT
+├── markers_analysis/          # Análisis de pausas, repeticiones y reformulaciones
+├── metadata_integration/      # Loaders y Enrichers por dataset
 ├── preprocessing_text/        # Limpieza textual y marcas CHAT
-├── scripts/                   # Lanzadores SLURM para cluster
-└── infer_bert_patient.py      # Evaluación por dataset / transferencia
+├── scripts/                   # Lanzadores SLURM numerados por orden de ejecución
+└── infer_bert_patient.py      # Evaluación cross-dataset / transferencia
+```
+
+Los scripts SLURM en `scripts/` están numerados (`00a`, `00b`, `01a`, `01b`, …) para reflejar el orden de ejecución del pipeline: la letra `a` corresponde a experimentos en inglés y la `b` a español.
+
+---
+
+## Configuración del Entorno
+
+```bash
+conda activate sara_tfg
+```
+
+Para generación con Gemini, añadir un fichero `.env`:
+
+```
+GEMINI_API_KEY=tu_clave_aqui
+```
+
+Para generación con Mistral (Ollama):
+
+```bash
+ollama serve  # debe estar activo durante la ejecución
 ```
 
 ---
 
-## Datos y Ejecución
+## Ejecución en HPC (SLURM)
 
-Los datasets originales no se distribuyen en este repositorio. El pipeline espera datos normalizados en JSONL con campos como:
+Los scripts esperan datos y modelos en:
 
-```json
-{
-  "Diagnosis": "Dementia",
-  "Age": 75,
-  "Gender": "F",
-  "MMSE": 21,
-  "Dataset": "Ivanova",
-  "Text_interviewer_participant": "PAR: ..."
-}
 ```
-
-Muchos scripts están preparados para ejecución en cluster con SLURM y rutas absolutas del entorno de trabajo:
-
-```text
 /mnt/beegfs/groups/irgroup/sara_tfg/
+├── jsonl/          # Datos normalizados
+├── results/        # Resultados y métricas
+├── logs/           # Logs de ejecución
+└── MultiConAD/Experiments/BERT_Models/  # Checkpoints
 ```
 
-Para ejecutar el proyecto en otra máquina, es necesario adaptar rutas de entrada, salida, modelos y logs.
+Lanzar un experimento:
+
+```bash
+sbatch scripts/04a_bert_classification_english.sh
+sbatch scripts/09a_generate_gemini_english.sh
+```
 
 ---
 
 ## Limitaciones
 
-- Los datasets son pequeños y heterogéneos.
-- La clase MCI está menos representada y es más difícil de detectar.
+- Los datasets son pequeños y heterogéneos; los resultados pueden ser sensibles a la partición.
+- La clase MCI está subrepresentada y es la más difícil de detectar.
 - Las tareas cognitivas no siempre son comparables entre datasets.
 - Los datos sintéticos pueden introducir artefactos generativos.
-- El código conserva dependencias y rutas propias del entorno HPC usado durante el TFG.
+- El código contiene rutas absolutas del entorno HPC y requiere adaptación para otros entornos.
 
 ---
 
-## Cita de MultiConAD
+## Referencia Base
 
 ```bibtex
 @misc{shakeri2025multiconadunifiedmultilingualconversational,

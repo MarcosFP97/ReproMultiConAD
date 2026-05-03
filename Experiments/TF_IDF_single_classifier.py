@@ -27,10 +27,14 @@ LABEL = "Text_interviewer_participant"
 # =========================
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", required=True, help="Nombre del dataset (ej: Pitt, Lu, Baycrest, Delaware, taukadial, ivanova)")
+parser.add_argument("--balanced", action="store_true", help="Usar class_weight='balanced' en los clasificadores")
 args = parser.parse_args()
 
 DATASET = args.dataset.strip()
 DATASET_LOWER = DATASET.lower()
+BALANCED = args.balanced
+balance_tag = "balanced" if BALANCED else "unbalanced"
+class_weight = "balanced" if BALANCED else None
 
 # =========================
 # PATHS (individual train/test)
@@ -235,12 +239,12 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
     X_test = tfidf.transform(X_test_text)
 
     classifiers = {
-        "Decision Tree": (DecisionTreeClassifier(random_state=random_state, class_weight="balanced"), {"max_depth": [10, 20, 30]}),
-        "Random Forest": (RandomForestClassifier(random_state=random_state, class_weight="balanced"), {"n_estimators": [50, 100, 200]}),
+        "Decision Tree": (DecisionTreeClassifier(random_state=random_state, class_weight=class_weight), {"max_depth": [10, 20, 30]}),
+        "Random Forest": (RandomForestClassifier(random_state=random_state, class_weight=class_weight), {"n_estimators": [50, 100, 200]}),
         "Naive Bayes": (MultinomialNB(), {"alpha": [0.5, 1.0, 1.5]}),
-        "SVM": (SVC(random_state=random_state, class_weight="balanced"), {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"]}),
+        "SVM": (SVC(random_state=random_state, class_weight=class_weight), {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"]}),
         # subo max_iter para evitar warnings de convergencia
-        "Logistic Regression": (LogisticRegression(random_state=random_state, max_iter=2000, class_weight="balanced"), {"C": [0.1, 1, 10]}),
+        "Logistic Regression": (LogisticRegression(random_state=random_state, max_iter=2000, class_weight=class_weight), {"C": [0.1, 1, 10]}),
     }
 
     results = []
@@ -266,7 +270,7 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
 
             fig_path = os.path.join(
                 fig_dir,
-                f"SVM_balanced_frontier_{DATASET}_HC_vs_{positive_label}.png"
+                f"SVM_{balance_tag}_frontier_{DATASET}_HC_vs_{positive_label}.png"
             )
 
             plot_svm_frontier_2d(
@@ -279,8 +283,8 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
                 random_state=random_state
             )
             print(f"[SVM] Figura guardada en: {fig_path}")
-            
-            fig_path_3d = os.path.join(fig_dir, f"SVM_balanced_scatter3D_{DATASET}_HC_vs_{positive_label}.png")
+
+            fig_path_3d = os.path.join(fig_dir, f"SVM_{balance_tag}_scatter3D_{DATASET}_HC_vs_{positive_label}.png")
 
             plot_svm_svd3d_scatter(
                 X_train, y_train.values,
@@ -339,6 +343,7 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         metrics_dict = {
             "Dataset": DATASET,
             "Binary_Positive": positive_label,
+            "Balanced": BALANCED,
             "Classifier": name,
             "Best Params": str(grid_search.best_params_),
             "Accuracy": report["accuracy"],
@@ -373,13 +378,13 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
 log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
 os.makedirs(log_dir, exist_ok=True)
 
-log_path = os.path.join(log_dir, f"TFIDF_{DATASET}.log")
+log_path = os.path.join(log_dir, f"TFIDF_{DATASET}_{balance_tag}.log")
 
 sys.stdout = open(log_path, "w", encoding="utf-8")
 sys.stderr = sys.stdout
 
 print(f"Logging en: {log_path}")
-print(f"Dataset: {DATASET} | Binary: HC vs {positive_label}")
+print(f"Dataset: {DATASET} | Binary: HC vs {positive_label} | Balanced: {BALANCED}")
 print(f"Train: {train_path}")
 print(f"Test : {test_path}\n")
 
@@ -388,7 +393,7 @@ final_df = run_tfidf_binary(train_df, test_df)
 results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
 os.makedirs(results_dir, exist_ok=True)
 
-results_path = os.path.join(results_dir, f"TFIDF_{DATASET}.xlsx")
+results_path = os.path.join(results_dir, f"TFIDF_{DATASET}_{balance_tag}.xlsx")
 final_df.to_excel(results_path, index=False)
 
 print(f"\nResultados guardados en: {results_path}")
