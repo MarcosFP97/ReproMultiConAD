@@ -108,11 +108,11 @@ if args.synthetic_percentage is not None and not 0 <= args.synthetic_percentage 
 def real_train_path(dataset_name: str, percentage: int) -> str:
     if percentage == 100:
         return os.path.join(DATA_ROOT, "individual_sets", f"train_{dataset_name}.jsonl")
-    return os.path.join(DATA_ROOT, "synthetic_data", "slices", f"train_{dataset_name}_real{percentage}.jsonl")
+    return os.path.join(DATA_ROOT, "synthetic_data", "real", f"train_{dataset_name}_real{percentage}.jsonl")
 
 
 def synthetic_train_path(dataset_name: str, percentage: int, source: str) -> str:
-    return os.path.join(DATA_ROOT, "synthetic_data", "slices", f"train_{dataset_name}_synthetic{percentage}_{source}.jsonl")
+    return os.path.join(DATA_ROOT, "synthetic_data", "synthetic", f"train_{dataset_name}_synthetic{percentage}_{source}.jsonl")
 
 if mode == "individual":
     test_dataset = train_dataset

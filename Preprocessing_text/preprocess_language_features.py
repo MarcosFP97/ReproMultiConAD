@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 from typing import Any, Dict, Iterable
 
@@ -8,8 +10,7 @@ from typing import Any, Dict, Iterable
 # ============================================================
 # CONFIG FIJA
 # ============================================================
-TRAIN_IN  = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_spanish_e5.jsonl"
-TEST_IN   = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_spanish_e5.jsonl"
+DATA_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
 
 TEXT_FIELD = "Text_interviewer_participant"
 
@@ -107,36 +108,69 @@ def preprocess_file(input_path: str, output_path: str, mode: str) -> None:
     write_jsonl(output_path, _rows())
 
 
-def main():
-    import argparse
-
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Preprocess markers in JSONL with a given mode.")
+    parser.add_argument(
+        "--language",
+        required=True,
+        choices=["en", "spa", "english", "spanish"],
+        help="Language split to process.",
+    )
     parser.add_argument(
         "--mode",
         required=True,
         choices=["pause", "rep", "ref", "all"],
         help="Which marker type to keep: pause | rep | ref | all",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--data-root",
+        default=DATA_ROOT,
+        help="Base directory containing train/test JSONL files.",
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    language = args.language
     mode = args.mode
+    input_prefix_by_language = {
+        "en": "en",
+        "english": "en",
+        "spa": "spa",
+        "spanish": "spa",
+    }
+    output_prefix_by_language = {
+        "en": "en",
+        "english": "en",
+        "spa": "spa",
+        "spanish": "spa",
+    }
+    input_prefix = input_prefix_by_language[language]
+    output_prefix = output_prefix_by_language[language]
+    train_in = os.path.join(args.data_root, f"train_{input_prefix}_e5.jsonl")
+    test_in = os.path.join(args.data_root, f"test_{input_prefix}_e5.jsonl")
 
     # Salidas por modo (para no pisar archivos)
-    train_out = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_spanish_e5_markers_{mode}.jsonl"
-    test_out  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_spanish_e5_markers_{mode}.jsonl"
+    output_dir = os.path.join(args.data_root, "markers_collections")
+    os.makedirs(output_dir, exist_ok=True)
+    train_out = os.path.join(output_dir, f"train_{output_prefix}_e5_markers_{mode}.jsonl")
+    test_out = os.path.join(output_dir, f"test_{output_prefix}_e5_markers_{mode}.jsonl")
 
     print("=== Preprocessing markers + dropping fields ===")
+    print("Language:", language)
     print("Mode:", mode)
-    print("Train in :", TRAIN_IN)
+    print("Train in :", train_in)
     print("Train out:", train_out)
-    print("Test  in :", TEST_IN)
+    print("Test  in :", test_in)
     print("Test  out:", test_out)
     print("Overwriting field:", TEXT_FIELD)
     print("Dropping fields:", DROP_FIELDS)
     print("Drop inactive markers:", DROP_INACTIVE_MARKERS)
     print("Tokens:", PAUSE_TOKEN, REP_TOKEN, REF_TOKEN)
 
-    preprocess_file(TRAIN_IN, train_out, mode=mode)
-    preprocess_file(TEST_IN, test_out, mode=mode)
+    preprocess_file(train_in, train_out, mode=mode)
+    preprocess_file(test_in, test_out, mode=mode)
 
     print("Done")
 

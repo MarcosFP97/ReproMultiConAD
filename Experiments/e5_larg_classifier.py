@@ -22,13 +22,11 @@ parser.add_argument('--translated', required=True)
 args_slurm = parser.parse_args()
 
 path_to_data_folder = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/"
-train_en = pd.read_json(path_to_data_folder + "train_english_e5.jsonl", lines=True)
-test_en = pd.read_json(path_to_data_folder + "test_english_e5.jsonl", lines=True)
+train_en = pd.read_json(path_to_data_folder + "train_en_e5.jsonl", lines=True)
+test_en = pd.read_json(path_to_data_folder + "test_en_e5.jsonl", lines=True)
 
-#train_spa = pd.read_json(path_to_data_folder + "train_spanish.jsonl", lines=True)
-#test_spa=pd.read_json(path_to_data_folder + "test_spanish.jsonl", lines=True)
-train_spa = pd.read_json(path_to_data_folder + "train_spanish_e5.jsonl", lines=True)
-test_spa=pd.read_json(path_to_data_folder + "test_spanish_e5.jsonl", lines=True)
+train_spa = pd.read_json(path_to_data_folder + "train_spa_e5.jsonl", lines=True)
+test_spa=pd.read_json(path_to_data_folder + "test_spa_e5.jsonl", lines=True)
 
 # Multi-lingual training and testing
 #train_dfs = [train_en, train_spa]

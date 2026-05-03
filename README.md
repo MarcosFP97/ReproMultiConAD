@@ -127,11 +127,16 @@ ConvoCognition/
 ├── markers_analysis/          # Análisis de pausas, repeticiones y reformulaciones
 ├── metadata_integration/      # Loaders y Enrichers por dataset
 ├── preprocessing_text/        # Limpieza textual y marcas CHAT
-├── scripts/                   # Lanzadores SLURM numerados por orden de ejecución
+├── scripts/
+│   ├── datasets_creation/     # Parseo, limpieza y creación de JSONL
+│   └── experimental_pipeline/ # Lanzadores SLURM de experimentos
 └── infer_bert_patient.py      # Evaluación cross-dataset / transferencia
 ```
 
-Los scripts SLURM en `scripts/` están numerados (`00a`, `00b`, `01a`, `01b`, …) para reflejar el orden de ejecución del pipeline: la letra `a` corresponde a experimentos en inglés y la `b` a español.
+Los scripts SLURM están separados por propósito:
+
+- `scripts/datasets_creation/`: transcripción `00`, parseo `.cha`, limpieza de JSONL y variantes con marcas CHAT.
+- `scripts/experimental_pipeline/`: experimentos numerados (`01a`, `01b`, …). La letra `a` corresponde a inglés y la `b` a español.
 
 ---
 
@@ -170,8 +175,17 @@ Los scripts esperan datos y modelos en:
 Lanzar un experimento:
 
 ```bash
-sbatch scripts/04a_bert_classification_english.sh
-sbatch scripts/09a_generate_gemini_english.sh
+sbatch scripts/experimental_pipeline/03a_bert_classification_english.sh
+sbatch scripts/experimental_pipeline/09a_generate_gemini_english.sh
+```
+
+Crear datasets:
+
+```bash
+sbatch scripts/datasets_creation/01_parse_cha_files.sh
+sbatch scripts/datasets_creation/02a_preprocess_english.sh
+sbatch scripts/datasets_creation/02b_preprocess_spanish.sh
+sbatch scripts/datasets_creation/03_preprocess_marker_features.sh
 ```
 
 ---

@@ -39,14 +39,9 @@ class_weight = "balanced" if BALANCED else None
 # =========================
 # PATHS (individual train/test)
 # =========================
-data_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"
-
-if DATASET_LOWER == "ivanova":
-    train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}.jsonl")
-    test_path  = os.path.join(data_dir, f"test_{DATASET_LOWER}.jsonl")
-else:
-    train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}_english.jsonl")
-    test_path  = os.path.join(data_dir, f"test_{DATASET_LOWER}_english.jsonl")
+data_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/TFIDF"
+train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}.jsonl")
+test_path = os.path.join(data_dir, f"test_{DATASET_LOWER}.jsonl")
 
 if not os.path.exists(train_path) or not os.path.exists(test_path):
     raise FileNotFoundError(

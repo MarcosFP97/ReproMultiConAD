@@ -1,7 +1,7 @@
+import argparse
 import os
 from typing import Iterator, Callable
 from .collection import Collection, RawDataPoint, NormalizedDataPoint
-import csv
 import json
 from dataclasses import asdict
 
@@ -238,24 +238,24 @@ def build_enricher(path_to_cha_files):
     Selecciona y construye el enricher apropiado en función del dataset path
     """
     if "WLS" in path_to_cha_files:
-        from Metadata_integration.Loaders.WLS_loader import WLSLoader
-        from Metadata_integration.Enrichers.WLS_enricher import WLSEnricher
+        from metadata_integration.Loaders.WLS_loader import WLSLoader
+        from metadata_integration.Enrichers.WLS_enricher import WLSEnricher
 
         loader = WLSLoader()
         metadata = loader.load_metadata()
         return WLSEnricher(metadata)
     
     elif "VAS" in path_to_cha_files:
-        from Metadata_integration.Loaders.VAS_loader import VASLoader
-        from Metadata_integration.Enrichers.VAS_enricher import VASEnricher
+        from metadata_integration.Loaders.VAS_loader import VASLoader
+        from metadata_integration.Enrichers.VAS_enricher import VASEnricher
 
         loader = VASLoader()
         metadata = loader.load_metadata()
         return VASEnricher(metadata)
     
     elif "Ivanova" in path_to_cha_files:
-        from Metadata_integration.Loaders.Ivanova_loader import IvanovaLoader
-        from Metadata_integration.Enrichers.Ivanova_enricher import IvanovaEnricher
+        from metadata_integration.Loaders.Ivanova_loader import IvanovaLoader
+        from metadata_integration.Enrichers.Ivanova_enricher import IvanovaEnricher
 
         loader = IvanovaLoader()
         metadata = loader.load_metadata()
@@ -264,49 +264,66 @@ def build_enricher(path_to_cha_files):
     else:
         return None  # datasets sin metadata externa
   
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Baycrest" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Delaware" # path to the folder containing .cha files
-path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Ivanova" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Kempler" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Lu" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/PerLA" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/Pitt" # path to the folder containing .cha files
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/VAS" # path to the folder containing .cha files 
-#path_to_cha_files =  "/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/WLS" # path to the folder containing .cha files 
+DEFAULT_OUTPUT_DIRECTORY = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
 
-if __name__ == '__main__':
-    
+
+def write_collection(
+    path_to_cha_files: str,
+    language: str,
+    output_directory: str,
+    output_name: str | None = None,
+) -> str:
     enricher = build_enricher(path_to_cha_files)
-    
-    #collection = CHACollection(path_to_cha_files,language="english",enricher=enricher) 
-    collection = CHACollection(path_to_cha_files,language="spanish",enricher=enricher) # PerLA, Ivanova
-    
-    # Making the file name for the output file
-    output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
-    last_words= path_to_cha_files.split('/')[-3:]
-    output_file_name= f"{last_words[2]}.jsonl"
-    
-    # Writing the normalized data to the output file
+    collection = CHACollection(path_to_cha_files, language=language, enricher=enricher)
+
+    os.makedirs(output_directory, exist_ok=True)
+    dataset_name = os.path.basename(os.path.normpath(path_to_cha_files))
+    output_file_name = output_name or f"{dataset_name}.jsonl"
     output_file_path = os.path.join(output_directory, output_file_name)
-    with open(output_file_path, "w",encoding="utf-8") as outfile:
+
+    with open(output_file_path, "w", encoding="utf-8") as outfile:
         for normalized_datapoint in collection.get_normalized_data():
             normalized_dict = asdict(normalized_datapoint)
             json.dump(normalized_dict, outfile, ensure_ascii=False)
             outfile.write("\n")
-            
-        # Resumen de enriquecimiento (si aplica)
+
     if enricher is not None:
         summary = enricher.summary()
         print("\nMetadata enrichment summary:")
         print(f"  Total .cha files processed: {summary['total_files']}")
         print(f"  Files enriched with metadata: {summary['matched_metadata']}")
         print(f"  Files without metadata: {summary['missing_metadata']}")
-            
-
-    
-
-    
+    print(f"JSONL saved to: {output_file_path}")
+    return output_file_path
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Parse CHAT .cha files and write normalized JSONL.")
+    parser.add_argument("--input-dir", required=True, help="Directory containing .cha files.")
+    parser.add_argument(
+        "--language",
+        required=True,
+        choices=["english", "spanish"],
+        help="Parser rules to apply.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=DEFAULT_OUTPUT_DIRECTORY,
+        help="Directory where the normalized JSONL file will be written.",
+    )
+    parser.add_argument(
+        "--output-name",
+        default=None,
+        help="Optional output filename. Defaults to '<input-dir-name>.jsonl'.",
+    )
+    return parser.parse_args()
 
 
+if __name__ == "__main__":
+    args = parse_args()
+    write_collection(
+        path_to_cha_files=args.input_dir,
+        language=args.language,
+        output_directory=args.output_dir,
+        output_name=args.output_name,
+    )

@@ -24,11 +24,11 @@ parser.add_argument('--translated', required=True) # use "yes", if you want to t
 args_slurm = parser.parse_args()
 
 path_to_data_folder = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/"
-train_en = pd.read_json(path_to_data_folder + "train_english.jsonl", lines=True)
-test_en = pd.read_json(path_to_data_folder + "test_english.jsonl", lines=True)
+train_en = pd.read_json(path_to_data_folder + "train_en.jsonl", lines=True)
+test_en = pd.read_json(path_to_data_folder + "test_en.jsonl", lines=True)
 
-train_spa = pd.read_json(path_to_data_folder + "train_spanish.jsonl", lines=True)
-test_spa=pd.read_json(path_to_data_folder + "test_spanish.jsonl", lines=True)
+train_spa = pd.read_json(path_to_data_folder + "train_spa.jsonl", lines=True)
+test_spa=pd.read_json(path_to_data_folder + "test_spa.jsonl", lines=True)
 
 # Multi-lingual training and testing
 #train_dfs = [train_en, train_spa]

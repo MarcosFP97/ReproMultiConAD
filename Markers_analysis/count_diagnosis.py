@@ -288,10 +288,10 @@ if __name__ == "__main__":
         "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/taukadial_English_train.jsonl",
         "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/VAS.jsonl",
         "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/WLS.jsonl",
-        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_english_e5.jsonl",
-        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_english_e5.jsonl",
-        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_spanish.jsonl",
-        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_spanish.jsonl"
+        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_en_e5.jsonl",
+        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_en_e5.jsonl",
+        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_spa_e5.jsonl",
+        "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_spa_e5.jsonl"
     ]
 
     for jsonl_path in jsonl_paths:
@@ -328,8 +328,8 @@ if __name__ == "__main__":
         print(f"\n- Task count (per patient): ")
         for t, count in task_counts.items():
             print(f"{t:20s} : {count}")
-        if dataset_name in ["train_english_e5", "test_english_e5",
-                            "train_spanish", "test_spanish"]:
+        if dataset_name in ["train_en_e5", "test_en_e5",
+                            "train_spa_e5", "test_spa_e5"]:
             print(f"\n- Dataset field count: ")
             for ds, count in dataset_counts.items():
                 print(f"{ds:20s} : {count}")

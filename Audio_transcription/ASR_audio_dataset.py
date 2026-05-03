@@ -1,47 +1,78 @@
-# Para transcribir el audio del dataset : taukdial
-
-import os
+import argparse
 import json
-import whisper
-from tqdm import tqdm
+import os
+from pathlib import Path
 
-# Path to the directory containing audio files
-directory_path = '/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad/TAUKADIAL-24-test'
-#directory_path = '.' # para probarlo antes de mandarlo al cluster
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Transcribe audio files with Whisper.")
+    parser.add_argument("--audio-dir", required=True, help="Directory containing audio files.")
+    parser.add_argument("--output-path", required=True, help="Path where transcriptions JSON will be written.")
+    parser.add_argument("--model", default="large-v3", help="Whisper model name.")
+    parser.add_argument(
+        "--language-filter",
+        default="en",
+        help="Keep only transcriptions detected in this language. Use 'all' to keep every language.",
+    )
+    parser.add_argument(
+        "--extensions",
+        nargs="+",
+        default=[".wav"],
+        help="Audio extensions to process.",
+    )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Search audio files recursively under --audio-dir.",
+    )
+    return parser.parse_args()
 
-# Load the Whisper model
-model = whisper.load_model("large-v3")
-#model = whisper.load_model("small") # para probarlo antes de mandarlo al cluster
 
-# List to store results
-results = []
+def iter_audio_files(audio_dir: Path, extensions: set[str], recursive: bool):
+    pattern = "**/*" if recursive else "*"
+    for path in sorted(audio_dir.glob(pattern)):
+        if path.is_file() and path.suffix.lower() in extensions:
+            yield path
 
-# Loop over files in the directory
-for filename in tqdm(os.listdir(directory_path)):
-    if filename.endswith(".wav"):  # Adjust the file extension as needed
-        audio_path = os.path.join(directory_path, filename)
-        
+
+def main() -> None:
+    args = parse_args()
+    import whisper
+    from tqdm import tqdm
+
+    audio_dir = Path(args.audio_dir)
+    output_path = Path(args.output_path)
+    extensions = {ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in args.extensions}
+
+    if not audio_dir.is_dir():
+        raise NotADirectoryError(f"Audio directory does not exist: {audio_dir}")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    model = whisper.load_model(args.model)
+    results = []
+
+    for audio_path in tqdm(list(iter_audio_files(audio_dir, extensions, args.recursive))):
         try:
-            # Transcribe the audio file
-            result = model.transcribe(audio_path)
-            
-            # Get the detected language and transcription
-            detected_language = result['language']
-            transcription = result['text']
-            
-            # Taukadial puede contener audio chino; aquí nos quedamos solo con inglés.
-            if detected_language == 'en':
-                results.append({
-                    "file_name": os.path.splitext(filename)[0],
-                    "transcription": transcription,
-                    "language": detected_language
-                })
-        except Exception as e:
-            print(f"Error processing file {filename}: {e}")
+            result = model.transcribe(str(audio_path))
+            detected_language = result["language"]
 
-# Save results to JSON file
-output_path = '/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_test_transcrpt.json'
-with open(output_path, "w", encoding="utf-8") as f:
-    json.dump(results, f, ensure_ascii=False, indent=4)
+            if args.language_filter != "all" and detected_language != args.language_filter:
+                continue
 
-print(f"Transcriptions saved to {output_path}")
+            results.append(
+                {
+                    "file_name": os.path.splitext(audio_path.name)[0],
+                    "transcription": result["text"],
+                    "language": detected_language,
+                }
+            )
+        except Exception as exc:
+            print(f"Error processing file {audio_path}: {exc}")
+
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=4)
+
+    print(f"Transcriptions saved to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

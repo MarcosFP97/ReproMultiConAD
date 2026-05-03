@@ -64,8 +64,8 @@ is_zero_shot = (real_pct == 0)
 if input_real_pct == 100:
     INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
 else:
-    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_real{input_real_pct}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/slices/train_{dataset}_synthetic{synthetic_pct}_gemini.jsonl")
+    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/real/train_{dataset}_real{input_real_pct}.jsonl")
+OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/synthetic/train_{dataset}_synthetic{synthetic_pct}_gemini.jsonl")
 MODEL_NAME = "gemini-2.5-flash"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COOKIE_THEFT_IMAGE_PATH = args_slurm.cookie_image
