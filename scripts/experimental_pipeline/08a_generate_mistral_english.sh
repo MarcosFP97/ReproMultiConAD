@@ -9,8 +9,6 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/GEN_%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda init bash
 conda activate sara_tfg
@@ -23,7 +21,7 @@ export OLLAMA_MAX_LOADED_MODELS=1
 /mnt/beegfs/groups/irgroup/sara_tfg/ollama_bin/bin/ollama serve &
 sleep 20
 
-SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Data_augmentation/generacion_sintetica_mistral.py"
+SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Data_augmentation/generacion_sintetica_mistral.py"
 
 for dataset in pitt; do
   for real_percentage in 0 20 40 60 80; do

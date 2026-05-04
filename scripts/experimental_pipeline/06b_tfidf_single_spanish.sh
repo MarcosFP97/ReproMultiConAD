@@ -16,7 +16,7 @@ conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/TF_IDF_single_classifier.py"
+SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_classifier.py"
 
 echo "=== Dataset: ivanova | unbalanced ==="
 python "$SCRIPT_PATH" --dataset ivanova

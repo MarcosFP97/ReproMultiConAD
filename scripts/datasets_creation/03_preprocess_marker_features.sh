@@ -16,7 +16,7 @@ conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-cd /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD
+cd /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition
 
 languages=(en en en en spa spa spa spa)
 modes=(pause rep ref all pause rep ref all)

@@ -9,15 +9,13 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/BERT/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda init bash
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-PYTHON_SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_balanced.py"
+PYTHON_SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_balanced.py"
 TRAIN_DATASET="${TRAIN_DATASET:-pitt}"
 SYNTHETIC_SOURCE="${SYNTHETIC_SOURCE:-mistral}"
 

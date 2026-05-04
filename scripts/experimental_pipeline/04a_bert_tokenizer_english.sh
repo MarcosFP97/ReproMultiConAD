@@ -13,7 +13,7 @@ set -euo pipefail
 source ~/.bashrc
 conda activate sara_tfg
 
-SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_tokenizer.py"
+SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_tokenizer.py"
 
 echo ">>> [EN] Empezando BINARY"
 python -u "$SCRIPT" --language en --task binary --mode pause

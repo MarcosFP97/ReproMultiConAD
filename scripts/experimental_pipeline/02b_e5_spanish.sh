@@ -9,15 +9,13 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/E5/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda init bash
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/e5_larg_classifier.py"
+SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/e5_larg_classifier.py"
 
 python "$SCRIPT_PATH" --test_language spa --task binary --translated no
 python "$SCRIPT_PATH" --test_language spa --task multiclass --translated no

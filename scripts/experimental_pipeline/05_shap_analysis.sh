@@ -42,7 +42,7 @@ echo "PROCESANDO: Idioma=$current_lang | Task=$current_task | Marker=$current_ma
 echo "------------------------------------------------------------"
 
 # 4. Ejecutar el script de Python con los argumentos correspondientes
-python /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/shap_analysis.py \
+python /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/shap_analysis.py \
     --language "$current_lang" \
     --task "$current_task" \
     --marker "$current_marker"

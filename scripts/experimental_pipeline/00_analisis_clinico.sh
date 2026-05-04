@@ -26,6 +26,6 @@ sleep 20
 echo "Iniciando análisis clínico-lingüístico con Mistral Small 3.2..."
 echo "Procesando dataset Ivanova Real para extraer patrones de deterioro..."
 
-python /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Data_augmentation/analista_clinico.py
+python /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Data_augmentation/analista_clinico.py
 
 echo "Análisis finalizado con éxito."

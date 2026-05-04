@@ -23,7 +23,7 @@ if [[ $# -ne 1 ]]; then
   exit 1
 fi
 
-cd /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD
+cd /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition
 mkdir -p /mnt/beegfs/groups/irgroup/sara_tfg/jsonl/taukdial_treatment
 
 if [[ "$1" == "train" ]]; then

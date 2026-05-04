@@ -16,7 +16,7 @@ conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-cd /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD
+cd /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition
 mkdir -p /mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection
 
 datasets=(Baycrest Delaware Ivanova Kempler Lu PerLA Pitt VAS WLS)

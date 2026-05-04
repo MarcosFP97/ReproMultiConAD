@@ -9,4 +9,4 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/%x_%j.log
 
-python /mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/infer_bert_patient.py
+python /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/infer_bert_patient.py

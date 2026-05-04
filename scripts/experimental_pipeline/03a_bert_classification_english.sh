@@ -9,15 +9,13 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/BERT/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda init bash
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_classification.py"
+SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_classification.py"
 
 python -u "$SCRIPT_PATH" --language en --task binary
 python -u "$SCRIPT_PATH" --language en --task multiclass
