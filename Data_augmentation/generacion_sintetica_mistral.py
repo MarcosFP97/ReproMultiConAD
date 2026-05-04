@@ -429,6 +429,8 @@ def main() -> None:
                 if not validate_generated_text(generated_text, prompt_spec):
                     batch_bad += 1
                     print(f"Descartado (texto inválido para dataset='{dataset}'): {target}")
+                    print("[OUTPUT INVALIDO PREVIEW]")
+                    print((generated_text or "<None>")[:500])
                     continue
 
                 # --- SI LLEGA AQUÍ, ES VÁLIDO ---

@@ -59,7 +59,7 @@ def validate_chat(texto: str | None) -> bool:
     if not lines:
         return False
 
-    if not re.match(r"^(INV|PAR):", lines[0]):
+    if not re.match(r"^\*?(INV|PAR):", lines[0]):
         return False
 
     # Rechazar code / markdown / notebooks
@@ -70,8 +70,8 @@ def validate_chat(texto: str | None) -> bool:
     if re.search(r"^\+{3,}", texto, flags=re.MULTILINE):
         return False
 
-    has_inv = any(l.startswith("INV:") for l in lines)
-    has_par = any(l.startswith("PAR:") for l in lines)
+    has_inv = any(re.match(r"^\*?INV:", l) for l in lines)
+    has_par = any(re.match(r"^\*?PAR:", l) for l in lines)
     return has_inv and has_par
 
 
@@ -86,11 +86,14 @@ def validate_required_roles(texto: str | None, spec: PromptSpec) -> bool:
     if not spec.roles_required:
         return True
 
-    first_ok = any(lines[0].startswith(role) for role in spec.roles_required)
+    first_ok = any(re.match(rf"^\*?{re.escape(role)}", lines[0]) for role in spec.roles_required)
     if not first_ok:
         return False
 
-    return all(any(line.startswith(role) for line in lines) for role in spec.roles_required)
+    return all(
+        any(re.match(rf"^\*?{re.escape(role)}", line) for line in lines)
+        for role in spec.roles_required
+    )
 
 
 def validate_chat_for_spec(texto: str | None, _: PromptSpec) -> bool:
@@ -151,7 +154,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
     "pitt": PromptSpec(
         system_template=(
             "You generate synthetic Pitt Corpus dialogues in CHAT format. "
-            "Output only turns from interviewer (INV) and participant (PAR)"
+            "Return only plain dialogue lines. Every line must start exactly with INV: or PAR:."
         ),
         user_template="""
             Use these neighbors as style anchors:
@@ -169,7 +172,8 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             """.strip(),
         roles_required=("INV:", "PAR:"),
         dataset_rules=(
-            "Include both speakers using the tags INV: and PAR: respectively.",
+            "Include both speakers using the exact prefixes INV: and PAR: respectively.",
+            "Do not use markdown, headings, explanations, bullets, quotes, or speaker prefixes other than INV: and PAR:.",
             "MIMIC the broken speech patterns found in the neighbors (do not correct grammar).",
             'YOU MUST INCLUDE CHAT CODES if the neighbors have them. Examples :\n- Pauses: (.) or (..)\n- Repetitions: [/] (e.g., "the [/] the cookie")\n- Revisions: [//] (e.g., "girl [//] boy")\n- Fillers: &-uh, &-um',
             "Keep Cookie Theft context."
@@ -204,13 +208,19 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             {rules_block}
         """.strip(),
         zero_shot_rules=(
-            "Include both speakers",
+            "Include both speakers using exact line prefixes INV: and PAR:.",
+            "Start with an INV: interviewer prompt, then generate PAR: participant responses.",
+            "Return only the dialogue. No explanation, no markdown, no bullets, no title.",
             "MIMIC the cognitive decline",
             'YOU MUST INCLUDE CHAT CODES to reflect the cognition: Pauses (.) or (..), Repetitions [/], Revisions [//], and Fillers (&-uh, &-um).',
             "Keep the Cookie Theft picture context",
         ),
         generation_options={
             "temperature": 1.0,
+        },
+        ollama_generation_options={
+            "max_output_tokens": 220,
+            "repeat_penalty": 1.15,
         },
         uses_cookie_theft_image=True,
                 ),

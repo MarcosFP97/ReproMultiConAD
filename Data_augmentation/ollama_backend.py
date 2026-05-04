@@ -48,8 +48,12 @@ def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: floa
         else:
             options[target_key] = value
 
+    if "num_predict" not in options:
+        options["num_predict"] = resolve_ollama_num_predict(spec)
+
     # Garantizamos tipos serializables en num_ctx incluso con overrides.
     options["num_ctx"] = int(options.get("num_ctx", num_ctx))
+    options["num_predict"] = int(options["num_predict"])
     if "temperature" in options:
         options["temperature"] = float(options["temperature"])
     if "repeat_penalty" in options:
