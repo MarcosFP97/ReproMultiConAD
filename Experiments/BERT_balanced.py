@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 DATA_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
 MODEL_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models"
-RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results"
+RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_synthetic_analysis"
 SPANISH_DATASETS = {"ivanova", "perla"}
 
 parser = argparse.ArgumentParser(

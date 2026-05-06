@@ -17,21 +17,37 @@ export LANG=C.UTF-8
 
 PYTHON_SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_balanced.py"
 TRAIN_DATASET="${TRAIN_DATASET:-ivanova}"
-SYNTHETIC_SOURCE="${SYNTHETIC_SOURCE:-mistral}"
 
 for task in binary multiclass; do
-  python "$PYTHON_SCRIPT" \
-    --mode synthetic \
-    --train-dataset "$TRAIN_DATASET" \
-    --task "$task" \
-    --train-source real \
-    --real-percentage 100
+  for real_percentage in 20 40 60 80 100; do
+    python "$PYTHON_SCRIPT" \
+      --mode synthetic \
+      --train-dataset "$TRAIN_DATASET" \
+      --task "$task" \
+      --train-source real \
+      --real-percentage "$real_percentage"
+  done
 
-  python "$PYTHON_SCRIPT" \
-    --mode synthetic \
-    --train-dataset "$TRAIN_DATASET" \
-    --task "$task" \
-    --train-source synthetic \
-    --synthetic-percentage 100 \
-    --synthetic-source "$SYNTHETIC_SOURCE"
+  for synthetic_source in mistral gemini; do
+    python "$PYTHON_SCRIPT" \
+      --mode synthetic \
+      --train-dataset "$TRAIN_DATASET" \
+      --task "$task" \
+      --train-source synthetic \
+      --synthetic-percentage 100 \
+      --synthetic-source "$synthetic_source"
+
+    for real_percentage in 20 40 60 80; do
+      synthetic_percentage=$((100 - real_percentage))
+
+      python "$PYTHON_SCRIPT" \
+        --mode synthetic \
+        --train-dataset "$TRAIN_DATASET" \
+        --task "$task" \
+        --train-source augmented \
+        --real-percentage "$real_percentage" \
+        --synthetic-percentage "$synthetic_percentage" \
+        --synthetic-source "$synthetic_source"
+    done
+  done
 done
