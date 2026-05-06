@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
-MODEL_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/512FINAL_multiclass_pitt_patient_classifier"
+MODEL_PATH = "/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/512FINAL_multiclass_pitt_patient_classifier"
 DATA_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets"
 DATASETS = [
     "test_pitt.jsonl", # hc/dementia/mci

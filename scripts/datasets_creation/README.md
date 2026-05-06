@@ -48,6 +48,6 @@ Orden recomendado:
 
 Rutas fijas usadas por los scripts:
 
-- Repositorio: `/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD`.
+- Repositorio: `/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition`.
 - Datasets `.cha`: `/mnt/beegfs/groups/irgroup/datasets/sara_tfg_multiconad`.
 - JSONL generados: `/mnt/beegfs/groups/irgroup/sara_tfg/jsonl`.

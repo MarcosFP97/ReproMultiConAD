@@ -30,7 +30,7 @@ from torch.optim import AdamW
 from tqdm import tqdm
 
 DATA_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
-MODEL_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models"
+MODEL_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models"
 RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_synthetic_analysis"
 SPANISH_DATASETS = {"ivanova", "perla"}
 
@@ -577,9 +577,8 @@ def main():
         learning_rate=LR,
         eval_strategy="epoch",
         save_strategy="epoch",
-        # En clases desbalanceadas, macro-F1 evita seleccionar un checkpoint que colapse a la clase mayoritaria.
         load_best_model_at_end=True,
-        metric_for_best_model="macro_f1",
+        metric_for_best_model="macro_f1", # Para evitar que colapse a la mayoritaria en los modelos individuales
         greater_is_better=True,
         save_total_limit=1,
         logging_dir='./logs',
