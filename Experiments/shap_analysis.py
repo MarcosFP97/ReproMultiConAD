@@ -1,3 +1,11 @@
+"""
+Análisis de interpretabilidad SHAP sobre modelos BERT fine-tuned con marcadores CHAT.
+
+Genera un fichero HTML por combinación (language, task, marker) con visualizaciones
+de atribución de tokens usando shap.PartitionExplainer. Diseñado para ejecutarse como
+SLURM Job Array: cada job analiza la misma combinación con el dataset completo y extrae
+una muestra estratificada priorizando ejemplos con marcadores CHAT.
+"""
 from __future__ import annotations
 
 import argparse

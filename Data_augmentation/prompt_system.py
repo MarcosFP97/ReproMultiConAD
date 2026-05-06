@@ -1,3 +1,11 @@
+"""
+Especificación de prompts y validación por dataset para la generación de transcripciones sintéticas.
+
+Define los PromptSpec de cada corpus (Pitt, Ivanova, default), validadores de formato CHAT,
+utilidades de formateo de vecinos KNN y la función central prepare_prompt_payload()
+usada por ambos backends (Gemini y Ollama).
+"""
+
 import re
 import sys
 import unicodedata

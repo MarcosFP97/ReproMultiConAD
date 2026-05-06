@@ -1,4 +1,12 @@
-import io 
+"""
+Backend Gemini para la generación de transcripciones sintéticas.
+
+Gestiona la carga de la imagen Cookie Theft (base64 inline), la construcción de
+GenerateContentConfig a partir de las opciones del PromptSpec, reintentos con
+backoff exponencial y el punto de entrada generar_dialogo_paciente_prompt().
+"""
+
+import io
 import PIL.Image
 import base64
 import mimetypes
@@ -14,21 +22,22 @@ from google.genai import types
 from prompt_system import PromptSpec, prepare_prompt_payload
 
 
+# Singleton a nivel de módulo: la imagen se carga y convierte una sola vez por job.
 COOKIE_THEFT_IMAGE_INLINE: dict[str, str] | None = None
 
 def load_cookie_theft_image_inline(path: Path) -> dict[str, str]:
     global COOKIE_THEFT_IMAGE_INLINE
-    
+
     if COOKIE_THEFT_IMAGE_INLINE is not None:
         return COOKIE_THEFT_IMAGE_INLINE
 
     if not path.exists():
         sys.exit(f"No se ha encontrado la imagen Cookie Theft en: {path}")
 
-    # CONVERSIÓN FORZADA A JPEG
+    # La API de Gemini solo acepta datos inline en JPEG/PNG; el asset original es un PPM.
     print(f"[INFO] Convirtiendo {path.name} a JPEG para compatibilidad...")
     with PIL.Image.open(path) as img:
-        img = img.convert("RGB") # Asegura que no haya canales extra
+        img = img.convert("RGB")
         buffer = io.BytesIO()
         img.save(buffer, format="JPEG")
         image_bytes = buffer.getvalue()

@@ -1,3 +1,11 @@
+"""
+Gráficas exploratorias de distribución para validar la calidad de los datos sintéticos.
+
+Genera histogramas de Age y MMSE por grupo diagnóstico y scatter plots Age vs. MMSE
+(global y por diagnóstico) para comprobar que los targets sintéticos generados por
+bootstrap siguen la distribución demográfica del dataset real.
+"""
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt

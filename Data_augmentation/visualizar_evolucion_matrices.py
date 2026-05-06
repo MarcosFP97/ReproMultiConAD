@@ -1,17 +1,23 @@
+"""
+Grids de evolución de matrices de confusión: solo-real vs. aumentado con Gemini.
+
+Renderiza una cuadrícula 2×6 de heatmaps por (dataset, mode): fila superior = baseline
+(real 20–100%), fila inferior = aumentado (base 0–80%). El diseño de 6 columnas alinea
+ambas filas en el mismo eje de porcentajes para facilitar la comparación visual.
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
 RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
 DATASETS = ["ivanova", "pitt"]
 MODES = ["binary", "multiclass"]
 
 X_BASELINE = [20, 40, 60, 80, 100]
 X_SYNTH = [0, 20, 40, 60, 80]
+
 
 def load_cm(path):
     try:
@@ -20,15 +26,12 @@ def load_cm(path):
     except Exception:
         return None
 
-# ============================================================
-# BUCLE PRINCIPAL (DATASET -> MODO)
-# ============================================================
 
 for dataset in DATASETS:
     for mode in MODES:
         print(f"\n--- Procesando matrices para: {dataset.upper()} ({mode}) ---")
-        
-        # Ahora usamos 6 columnas para poder alinear por porcentaje
+
+        # 6 columnas para que ambas filas compartan el mismo eje de porcentajes (0,20,40,60,80,100).
         fig, axes = plt.subplots(2, 6, figsize=(26, 10))
         fig.suptitle(
             f"Evolución de la Confusión: {dataset.upper()} ({mode.capitalize()})\n"
@@ -36,15 +39,14 @@ for dataset in DATASETS:
             fontsize=20, fontweight='bold', y=0.98
         )
 
-        # Ocultamos todos los ejes al principio
         for ax_row in axes:
             for ax in ax_row:
                 ax.axis("off")
 
         # --- FILA 1: BASELINE ---
-        # La colocamos en columnas 1..5 para que 20,40,60,80 queden alineados con augmented
+        # Columnas 1..5 para que 20,40,60,80,100 queden alineados con el 0,20,40,60,80 de augmented.
         for i, p in enumerate(X_BASELINE):
-            col = i + 1   # desplazamiento a la derecha
+            col = i + 1
             ax = axes[0, col]
 
             path = os.path.join(RESULTS_DIR, f"balancedBERT_{dataset}_{p}_{mode}.xlsx")
@@ -66,7 +68,7 @@ for dataset in DATASETS:
             ax.set_ylabel("Real")
 
         # --- FILA 2: AUGMENTED ---
-        # La colocamos en columnas 0..4
+        # Columnas 0..4 para los porcentajes base 0, 20, 40, 60, 80.
         for i, p in enumerate(X_SYNTH):
             col = i
             ax = axes[1, col]

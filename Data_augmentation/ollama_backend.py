@@ -1,3 +1,10 @@
+"""
+Backend Ollama para la generación de transcripciones sintéticas.
+
+Traduce las opciones de generación del PromptSpec a parámetros compatibles con Ollama
+(num_predict, num_ctx, repeat_penalty) y llama a la API de chat local.
+"""
+
 import sys
 from typing import Any
 

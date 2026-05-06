@@ -1,3 +1,10 @@
+"""
+Clasificador con embeddings multilingual-E5-large + cabezas ML clásicas (pipeline global).
+
+Codifica las transcripciones con intfloat/multilingual-e5-large y aplica GridSearchCV
+sobre Decision Tree, Random Forest, SVM y Logistic Regression. Soporta entrenamiento
+monolingüe en inglés o español y clasificación binaria (sin MCI) o multiclase.
+"""
 import os
 import sys
 import pandas as pd
@@ -27,13 +34,6 @@ test_en = pd.read_json(path_to_data_folder + "test_en_e5.jsonl", lines=True)
 
 train_spa = pd.read_json(path_to_data_folder + "train_spa_e5.jsonl", lines=True)
 test_spa=pd.read_json(path_to_data_folder + "test_spa_e5.jsonl", lines=True)
-
-# Multi-lingual training and testing
-#train_dfs = [train_en, train_spa]
-#test_dfs = {
-#    'en': test_en,
-#    'spa': test_spa
-#}
 
 train_by_lang = {
     "en": train_en,
@@ -80,6 +80,7 @@ if args_slurm.translated== "yes":
 def extract_embeddings(df, text_column, label_column):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = SentenceTransformer('intfloat/multilingual-e5-large').to(device)
+    # El prefijo "passage: " es obligatorio para E5: sin él, el modelo genera embeddings degradados.
     texts = ["passage: " + text for text in df[text_column].tolist()]
     labels = df[label_column].tolist()
     embeddings = model.encode(texts, normalize_embeddings=True,device=device)

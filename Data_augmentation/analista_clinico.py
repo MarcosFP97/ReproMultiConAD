@@ -1,3 +1,12 @@
+"""
+Análisis clínico-lingüístico del corpus Ivanova usando Mistral vía Ollama.
+
+Introduce el dataset JSONL completo en una ventana de contexto de 128k tokens de
+Mistral y solicita una caracterización clínica de cómo el deterioro cognitivo se
+manifiesta durante la tarea de lectura del Quijote. El resultado se guarda en
+informe_clinico_ivanova.txt y se usó para diseñar las reglas zero-shot de prompt_system.py.
+"""
+
 import json
 import sys
 from pathlib import Path

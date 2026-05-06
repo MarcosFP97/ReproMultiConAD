@@ -1,3 +1,10 @@
+"""
+Fine-tuning BERT con tokens especiales CHAT para clasificación de deterioro cognitivo.
+
+Extiende el vocabulario BERT con tokens derivados de anotaciones CHAT: [PAUSE], [REP], [REF].
+El argumento --mode controla qué tokens se añaden; "all" añade los tres simultáneamente.
+Para la versión sin tokens especiales, ver BERT_classification.py.
+"""
 import os
 import pandas as pd
 from datetime import datetime
@@ -14,18 +21,12 @@ from torch.optim import AdamW
 from tqdm import tqdm
 
 
-# ============================================================
-# CONFIG (cambia aquí lo que necesites)
-# ============================================================
-
-# Configuración de los argumentos de entrada
 parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
 parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
 parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
 parser.add_argument("--mode", type=str, required=True, help="Tipo de tokenización especial : rep (repeticiones), ref (reformulaciones), pause (pausas) y all (todos los tokens a la vez)")
 args = parser.parse_args()
 
-# Asignamos los argumentos a variables para usarlas en la config
 language = args.language
 task = args.task
 mode = args.mode
@@ -44,15 +45,11 @@ LR         = 5e-5
 EPOCHS     = 3
 
 if task == "binary" :
-    DROP_LABEL_VALUE = "MCI"   # quitamos MCI para binario
+    DROP_LABEL_VALUE = "MCI"
 elif task == "multiclass" :
     DROP_LABEL_VALUE = None
-    
-VERBOSE = True             # ponlo en False si quieres menos prints
 
-# ============================================================
-# 1) DATASET
-# ============================================================
+VERBOSE = True
 
 class ClassificationDataset(Dataset):
     """
@@ -78,11 +75,11 @@ class ClassificationDataset(Dataset):
 
         encoding = self.tokenizer(
             text,
-            add_special_tokens=True,     # añade [CLS] al inicio y [SEP] al final
-            max_length=self.max_len,     # longitud fija
-            padding="max_length",        # pad hasta max_len
-            truncation=True,             # trunca si es más largo
-            return_tensors="pt",         # devuelve tensores torch
+            add_special_tokens=True,
+            max_length=self.max_len,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
         )
 
         # encoding["input_ids"] tiene shape [1, max_len] -> quitamos la dimensión 0
@@ -93,16 +90,11 @@ class ClassificationDataset(Dataset):
         }
 
 
-# ============================================================
-# 2) DATA PREP
-# ============================================================
 def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
     df = pd.read_json(path, lines=True)
 
-    # Nos quedamos SOLO con lo que necesitamos
     df = df[[label_col, text_col]].copy()
 
-    # Filtrado (ej: quitar MCI)
     if drop_label_value is not None:
         before = len(df)
         df = df[df[label_col] != drop_label_value].copy()
@@ -110,7 +102,6 @@ def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
         if VERBOSE:
             print(f"[DATA] Filter '{drop_label_value}': {before} -> {after} rows")
 
-    # Aseguramos que texto sea string y sin NaN
     df[text_col] = df[text_col].astype(str)
 
     return df
@@ -167,7 +158,6 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
 
     if VERBOSE:
         print(f"\n[SPLIT] Train size: {len(train_texts)} | Val size: {len(val_texts)}")
-        # Distribución por clase en train/val
         import numpy as np
         print("[SPLIT] Class distribution (train):", dict(zip(*np.unique(train_labels, return_counts=True))))
         print("[SPLIT] Class distribution (val):  ", dict(zip(*np.unique(val_labels, return_counts=True))))
@@ -179,11 +169,13 @@ def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=F
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     return loader
 
-# ============================================================
-# 3) MODEL SETUP
-# ============================================================
-
 def get_special_tokens_for_mode(mode: str):
+    """Devuelve los tokens CHAT a inyectar según el modo del experimento.
+
+    Los marcadores CHAT ([PAUSE], [REP], [REF]) no existen en el vocabulario BERT base;
+    añadirlos como additional_special_tokens y llamar a resize_token_embeddings les
+    asigna embeddings propios en lugar de descomponerlos en subpalabras arbitrarias.
+    """
     if mode == "pause":
         return ["[PAUSE]"]
     if mode == "rep":
@@ -198,7 +190,6 @@ def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def build_model(model_name, num_labels, device):
-    #model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     model.to(device)
     return model
@@ -206,9 +197,6 @@ def build_model(model_name, num_labels, device):
 def build_optimizer(model, lr=5e-5):
     return AdamW(model.parameters(), lr=lr)
 
-# ============================================================
-# 4) TRAIN / EVAL
-# ============================================================
 def train_one_epoch(model, train_loader, optimizer, device, epoch_idx, epochs_total):
     model.train()
     total_loss = 0.0
@@ -276,7 +264,7 @@ def predict_with_probs(model, data_loader, device):
     model.eval()
     all_true = []
     all_pred = []
-    all_probs = []  # lista de vectores [num_labels]
+    all_probs = []
 
     with torch.no_grad():
         for batch in data_loader:
@@ -294,9 +282,6 @@ def predict_with_probs(model, data_loader, device):
 
     return all_true, all_pred, all_probs
 
-# ============================================================
-# 5) SAVE
-# ============================================================
 def save_artifacts(model, tokenizer, label_encoder, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     model.save_pretrained(out_dir)
@@ -306,9 +291,6 @@ def save_artifacts(model, tokenizer, label_encoder, out_dir):
     if VERBOSE:
         print(f"\n[SAVE] Model + tokenizer + label_encoder saved to:\n  {out_dir}")
 
-# ============================================================
-# 6) EXTRAS: inspección de tokenización / longitudes
-# ============================================================
 def describe_token_lengths(df, tokenizer, text_col, max_len):
     lengths = df[text_col].apply(lambda x: len(tokenizer.tokenize(str(x))))
     print("\n[TOKENS] Token length stats (WordPiece tokens):")
@@ -317,13 +299,11 @@ def describe_token_lengths(df, tokenizer, text_col, max_len):
     trunc_pct = (lengths > max_len).mean() * 100
     print(f"[TOKENS] % samples that will be truncated at MAX_LEN={max_len}: {trunc_pct:.2f}%")
 
-    # Ejemplo concreto de tokenización
     sample_text = str(df[text_col].iloc[0])
     tokens = tokenizer.tokenize(sample_text)[:50]
     print("\n[TOKENS] Example tokenization (first 50 tokens of first sample):")
     print(tokens)
 
-    # Ejemplo de ids
     ids = tokenizer.convert_tokens_to_ids(tokens)
     print("\n[TOKENS] Corresponding token ids (first 50):")
     print(ids)
@@ -335,9 +315,6 @@ def inspect_one_batch(loader):
     print("  attention_mask:", tuple(batch["attention_mask"].shape)) # [B, max_len]
     print("  labels:        ", tuple(batch["label"].shape))          # [B] 
 
-# ============================================================
-# 7) GUARDADO A EXCEL
-# ============================================================
 def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: int) -> float:
     lengths = df[text_col].apply(lambda x: len(tokenizer.tokenize(str(x))))
     return float((lengths > max_len).mean() * 100.0)
@@ -358,20 +335,16 @@ def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta:
 
     row = dict(exp_meta)
 
-    # global
     row["Accuracy"] = report.get("accuracy", np.nan)
 
-    # macro
     row["Macro_precision"] = report["macro avg"]["precision"]
     row["Macro_recall"]    = report["macro avg"]["recall"]
     row["Macro_f1"]        = report["macro avg"]["f1-score"]
 
-    # weighted
     row["Weighted_precision"] = report["weighted avg"]["precision"]
     row["Weighted_recall"]    = report["weighted avg"]["recall"]
     row["Weighted_f1"]        = report["weighted avg"]["f1-score"]
 
-    # por clase
     for cls in class_names:
         row[f"{cls}_precision"] = report[cls]["precision"]
         row[f"{cls}_recall"]    = report[cls]["recall"]
@@ -389,7 +362,6 @@ def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    # confusion matrix
     cm = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
     cm_df = pd.DataFrame(
         cm,
@@ -404,36 +376,27 @@ def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list
     print(f"[SAVE] Excel results saved to: {out_path}")
 
 
-# ============================================================
-# MAIN
-# ============================================================
 def main():
 
     print("========== BERT TEXT CLASSIFICATION PIPELINE ==========")
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # 1) Cargar datos
     print("\n[STEP 1] Loading train/test data (jsonl) and selecting needed columns...")
     train_df = load_and_prepare_df(TRAIN_PATH, TEXT_COL, LABEL_COL, drop_label_value=DROP_LABEL_VALUE)
     test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, drop_label_value=DROP_LABEL_VALUE)
     print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
 
-    # 2) Label encoding
     print("\n[STEP 2] Label encoding using TRAIN only...")
     train_df, label_encoder = encode_labels_fit(train_df, label_col=LABEL_COL)
     test_df = encode_labels_transform(test_df, label_col=LABEL_COL, label_encoder=label_encoder)
 
-    # 3) Split train/val
     print("\n[STEP 3] Splitting TRAIN into train/val...")
     train_texts, val_texts, train_labels, val_labels = split_train_val(train_df, text_col=TEXT_COL)
 
-    # 4) Tokenizer
     print("\n[STEP 4] Loading tokenizer and describing tokenization...")
-    #tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 
-    # 4.1) AÑADIMOS LOS SPECIAL TOKENS
     specials = get_special_tokens_for_mode(mode)
     tokenizer.add_special_tokens({"additional_special_tokens": specials})
 
@@ -444,7 +407,6 @@ def main():
         print("[TOKENIZER] Tokenize sanity check:", tokenizer.tokenize(test_str))
 
 
-    # 5) Loaders
     print("\n[STEP 5] Building DataLoaders...")
     train_loader = build_loader(train_texts, train_labels, tokenizer, max_len=MAX_LEN, batch_size=BATCH_SIZE, shuffle=True)
     val_loader   = build_loader(val_texts, val_labels, tokenizer, max_len=MAX_LEN, batch_size=BATCH_SIZE, shuffle=False)
@@ -453,7 +415,6 @@ def main():
     if VERBOSE:
         inspect_one_batch(train_loader)
 
-    # 6) Modelo + optimizer
     print("\n[STEP 6] Building model and optimizer...")
     device = get_device()
     print(f"[DEVICE] Using: {device}")
@@ -461,18 +422,16 @@ def main():
         print(f"[DEVICE] GPU: {torch.cuda.get_device_name(0)}")
 
     model = build_model(MODEL_NAME, num_labels=len(label_encoder.classes_), device=device)
-    # IMPORTANTÍSIMO: para que el modelo tenga embeddings para los tokens nuevos
+    # Sin este resize, los tokens nuevos no tienen embedding propio y el forward lanza un error de índice.
     model.resize_token_embeddings(len(tokenizer))
     optimizer = build_optimizer(model, lr=LR)
 
-    # 7) Entrenar
     print("\n[STEP 7] Training...")
     for epoch in range(EPOCHS):
         avg_loss = train_one_epoch(model, train_loader, optimizer, device, epoch, EPOCHS)
         val_acc = evaluate_accuracy(model, val_loader, device)
         print(f"[EPOCH {epoch+1}] Train Loss: {avg_loss:.4f} | Val Acc: {val_acc:.4f}")
 
-    # 8) Evaluación en TEST
     print("\n[STEP 8] Final evaluation on TEST...")
     test_acc = evaluate_accuracy(model, test_loader, device)
     print(f"[TEST] Accuracy: {test_acc:.4f}")
@@ -480,7 +439,6 @@ def main():
     y_true, y_pred, y_probs = predict_with_probs(model, test_loader, device)
 
     id2label = {i: c for i, c in enumerate(label_encoder.classes_)}
-    label2id = {c: i for i, c in enumerate(label_encoder.classes_)}
 
     # reconstruimos los textos en el mismo orden que el test_loader
     test_texts = test_df[TEXT_COL].values.tolist()
@@ -491,7 +449,6 @@ def main():
         pred_name = id2label[yp]
         confidence = float(max(prob_vec))
 
-        # prob de Dementia / HC 
         prob_dict = {id2label[i]: float(prob_vec[i]) for i in range(len(prob_vec))}
 
         rows.append({
@@ -507,13 +464,9 @@ def main():
     pred_df = pd.DataFrame(rows)
     pred_df["correct"] = pred_df["true_id"] == pred_df["pred_id"]
     
-    # =========================
-    # EXCEL: resumen del experimento
-    # =========================
     results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
     os.makedirs(results_dir, exist_ok=True)
 
-    # cosas útiles para guardar
     trunc_pct = compute_truncation_pct(train_df, tokenizer, TEXT_COL, MAX_LEN)
 
     exp_meta = {
@@ -543,7 +496,6 @@ def main():
         exp_meta=exp_meta
     )
 
-    # nombre Excel 
     out_xlsx = os.path.join(results_dir, f"BERT_{language}_{mode}_{task}.xlsx")
 
     save_results_excel(
@@ -554,13 +506,11 @@ def main():
         class_names=list(label_encoder.classes_),
     )
 
-    # imprime resumen rápido
     n_total = len(pred_df)
-    n_wrong = int((~pred_df["correct"]).sum())
-    print(f"\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)")
+    n_wrong = int((~pred_df[“correct”]).sum())
+    print(f”\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)”)
 
-    # muestra los 20 fallos más “seguros” (alta confianza pero equivocado)
-    wrong_df = pred_df[~pred_df["correct"]].sort_values("confidence", ascending=False)
+    wrong_df = pred_df[~pred_df[“correct”]].sort_values(“confidence”, ascending=False)
 
     print("\n[ERRORS] Top 20 most confident WRONG examples:")
     for i, row in wrong_df.head(20).iterrows():
@@ -569,14 +519,12 @@ def main():
             txt = txt[:300] + "..."
         print(f"- true={row['true_label']} | pred={row['pred_label']} | conf={row['confidence']:.3f} | {txt}")
 
-    # report + matriz 
     print("\n[TEST] Classification report:")
     print(classification_report(y_true, y_pred, target_names=label_encoder.classes_))
     print("[TEST] Confusion matrix:")
     print(confusion_matrix(y_true, y_pred))
 
 
-    # 9) Guardar modelo
     print("\n[STEP 9] Saving model artifacts...")
     save_artifacts(model, tokenizer, label_encoder, out_dir=OUTPUT_DIR)
 

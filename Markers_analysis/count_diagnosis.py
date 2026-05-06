@@ -29,7 +29,6 @@ def normalize_file_id(file_id, dataset_name):
 
     return file_id
 
-
 def count_raw_diagnosis(jsonl_path):
     """
     Cuenta diagnósticos por paciente único (File_ID normalizado).
@@ -97,7 +96,6 @@ def count_gender(jsonl_path):
             gender_counter[str(gender)] += 1
 
     return gender_counter
-
 
 def count_MMSE(jsonl_path):
     """

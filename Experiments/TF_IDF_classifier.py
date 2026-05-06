@@ -1,3 +1,10 @@
+"""
+Clasificador TF-IDF sobre la pipeline global de datos combinados por idioma.
+
+Lee train_{language}_e5.jsonl y test_{language}_e5.jsonl, aplica TfidfVectorizer
+y ejecuta GridSearchCV sobre Decision Tree, Random Forest, Naive Bayes, SVM y
+Logistic Regression. Soporta clasificación binaria (sin MCI) o multiclase.
+"""
 import os
 import sys
 import pandas as pd
@@ -11,7 +18,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support # añadimos las ultimas dos para guardar datos en un excel
+from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support
 import argparse
 
 LABEL = 'Text_interviewer_participant'
@@ -19,7 +26,7 @@ LABEL = 'Text_interviewer_participant'
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_language', required=True)
 parser.add_argument('--task', required=True)
-parser.add_argument('--translated', required=True) # use "yes", if you want to the analysis using the English translated data
+parser.add_argument('--translated', required=True, help="'yes' para usar texto traducido al inglés")
 
 args_slurm = parser.parse_args()
 
@@ -29,13 +36,6 @@ test_en = pd.read_json(path_to_data_folder + "test_en.jsonl", lines=True)
 
 train_spa = pd.read_json(path_to_data_folder + "train_spa.jsonl", lines=True)
 test_spa=pd.read_json(path_to_data_folder + "test_spa.jsonl", lines=True)
-
-# Multi-lingual training and testing
-#train_dfs = [train_en, train_spa]
-#test_dfs = {
-#    'en': test_en,
-#    'spa': test_spa
-#}
 
 train_by_lang = {
     "en": train_en,
@@ -47,7 +47,6 @@ test_by_lang = {
     "spa": test_spa
 }
 
-# Mono-lingual training and testing
 train_dfs = [train_by_lang[args_slurm.test_language]]
 test_dfs = {
     args_slurm.test_language: test_by_lang[args_slurm.test_language]
@@ -77,8 +76,6 @@ def _get_confidence(estimator, X):
     else:
         return None
 
-
-# Add a column for translated text for English dataset
 
 if args_slurm.translated== "yes":
     train_en['translated'] = train_en[LABEL]
@@ -117,7 +114,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
 
     X_test_tfidf = tfidf.transform(X_test)
 
-    results = [] # para guardar los resultados en un excel
+    results = []
 
     classifiers = {
         'Decision Tree': (DecisionTreeClassifier(random_state=random_state), {'max_depth': [10, 20, 30]}),
@@ -136,17 +133,13 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         best_model = grid_search.best_estimator_
         conf = _get_confidence(best_model, X_test_tfidf)
 
-        # DataFrame de evaluación
         eval_df = test_df.copy()
-
-        # texto usado (translated o no) para imprimir ejemplos
         eval_df["_text"] = X_test.astype(str).values
         eval_df["y_true"] = y_test.astype(str).values
         eval_df["y_pred"] = pd.Series(y_pred).astype(str).values
         eval_df["correct"] = (eval_df["y_true"] == eval_df["y_pred"])
         
-        # --- Asegurar columna Dataset ---
-        # (si ya existe, perfecto; si no, intenta alternativas)
+        # Algunos JSONL de la pipeline global guardan el origen con distinta capitalización.
         if "Dataset" not in eval_df.columns:
             for alt in ["dataset", "DATASET", "Corpus", "corpus"]:
                 if alt in eval_df.columns:
@@ -155,17 +148,11 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             else:
                 eval_df["Dataset"] = "Unknown"
 
-        # --- Fallos por dataset ---
         print("--------------------------------------------------")
         print(f"[{name}] Resumen ejemplos")
         wrong_df = eval_df[~eval_df["correct"]].copy()
 
-        wrong_by_dataset = (
-            wrong_df["Dataset"]
-            .value_counts(dropna=False)
-        )
-
-        # --- (opcional) tasa de fallo por dataset ---
+        wrong_by_dataset = wrong_df["Dataset"].value_counts(dropna=False)
         total_by_dataset = eval_df["Dataset"].value_counts(dropna=False)
 
         fail_rate = (wrong_by_dataset / total_by_dataset).fillna(0).sort_values(ascending=False)
@@ -188,7 +175,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         else:
             eval_df["conf"] = conf
 
-        # snippet corto para que no te explote el log
         eval_df["text_snip"] = (
             eval_df["_text"]
             .str.replace("\n", " ", regex=False)
@@ -196,7 +182,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             .str.slice(0, 220)
         )
 
-        # ---- Resumen de aciertos/fallos
         n_total = len(eval_df)
         n_ok = int(eval_df["correct"].sum())
         n_bad = n_total - n_ok
@@ -206,8 +191,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         print("Fallos por clase (y_true):")
         print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
 
-        # ---- Matriz de confusión
-        labels = list(grid_search.classes_)  # clases vistas en training
+        labels = list(grid_search.classes_)
         cm = confusion_matrix(eval_df["y_true"], eval_df["y_pred"], labels=labels)
         cm_df = pd.DataFrame(cm,
                             index=[f"true_{l}" for l in labels],
@@ -215,7 +199,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         print("\nMatriz de confusión:")
         print(cm_df)
 
-        # Confusiones más frecuentes (true != pred)
         confusions = []
         for i, tl in enumerate(labels):
             for j, pl in enumerate(labels):
@@ -227,7 +210,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             for c, tl, pl in confusions[:10]:
                 print(f"  {c:>4}  {tl} -> {pl}")
 
-        # ---- Columnas útiles para imprimir (si existen IDs en tu dataset)
         id_candidates = ["ID", "Participant_ID", "participant_id", "Interview_ID", "File", "file"]
         id_cols = [c for c in id_candidates if c in eval_df.columns]
         show_cols = id_cols + ["conf", "y_true", "y_pred", "text_snip"]
@@ -240,25 +222,16 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             n = min(n, len(df))
             print(df[show_cols].head(n).to_string(index=False))
 
-        # ---- 20 MEJORES: aciertos con más confianza
         best_correct = eval_df[eval_df["correct"]].copy()
         if best_correct["conf"].notna().any():
             best_correct = best_correct.sort_values("conf", ascending=False)
         _print_block(best_correct, "20 MEJORES (aciertos más seguros):", n=20)
 
-        # ---- 20 PEORES: fallos con más confianza (los errores más graves)
         worst_wrong = eval_df[~eval_df["correct"]].copy()
         if worst_wrong["conf"].notna().any():
             worst_wrong = worst_wrong.sort_values("conf", ascending=False)
         _print_block(worst_wrong, "20 PEORES (fallos con más confianza):", n=20)
 
-        # (Opcional) si también quieres ver fallos “dudosos” (confianza baja), descomentar:
-        # if worst_wrong["conf"].notna().any():
-        #     worst_ambiguous = eval_df[~eval_df["correct"]].sort_values("conf", ascending=True)
-        #     _print_block(worst_ambiguous, "20 FALLOS más dudosos (confianza más baja):", n=20)
-
-
-        # -------------- GUARDAMOS DATOS ----------------
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         metrics_dict = {
@@ -271,8 +244,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             "Representation": "TF-IDF"
         }
 
-        # ---- Métricas por clase (incluye MCI si existe) ----
-        class_labels = list(grid_search.classes_)  # clases vistas en training
+        class_labels = list(grid_search.classes_)
 
         for label in class_labels:
             if label in report and isinstance(report[label], dict):
@@ -281,26 +253,20 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
                 metrics_dict[f"{label}_f1"] = report[label]["f1-score"]
                 metrics_dict[f"{label}_support"] = report[label]["support"]
             else:
-                # Por si alguna clase no aparece en report (raro, pero mejor prevenir)
                 metrics_dict[f"{label}_precision"] = np.nan
                 metrics_dict[f"{label}_recall"] = np.nan
                 metrics_dict[f"{label}_f1"] = np.nan
                 metrics_dict[f"{label}_support"] = 0
 
-        # ---- Macro avg ----
         metrics_dict["Macro_precision"] = report["macro avg"]["precision"]
         metrics_dict["Macro_recall"] = report["macro avg"]["recall"]
         metrics_dict["Macro_f1"] = report["macro avg"]["f1-score"]
 
-        # ---- Weighted avg ----
         metrics_dict["Weighted_precision"] = report["weighted avg"]["precision"]
         metrics_dict["Weighted_recall"] = report["weighted avg"]["recall"]
         metrics_dict["Weighted_f1"] = report["weighted avg"]["f1-score"]
 
-        # -> 1 fila
         results.append(metrics_dict)
-
-        # ----------------------------------------------
 
         print(f"Classifier: {name}")
         print(f"Best Parameters: {grid_search.best_params_}")
@@ -308,14 +274,10 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         print(classification_report(y_test, y_pred, zero_division=0))
         print("\n")
 
-    # ------------------ GUARDAMOS DATOS ------------------
     results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/TFIDF_{test_language}_{task}.xlsx"
-
     final_df = pd.DataFrame(results)
     final_df.to_excel(results_path, index=False)
-
     print(f"Resultados guardados en: {results_path}")
-    # -----------------------------------------------------
 
     print("test dataset: ", test_language)
     for df in train_dfs:
@@ -325,7 +287,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     print("TF-IDF")
     print("Translation status: ",translated)
 
-# --- log a TXT (solo archivo) ---
 log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
 os.makedirs(log_dir, exist_ok=True)
 
@@ -336,7 +297,7 @@ log_path = os.path.join(
 )
 
 sys.stdout = open(log_path, "w", encoding="utf-8")
-sys.stderr = sys.stdout  # opcional: también guarda errores
+sys.stderr = sys.stdout
 
 print(f"Logging en: {log_path}\n")
 

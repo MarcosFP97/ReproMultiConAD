@@ -1,4 +1,13 @@
-﻿import argparse
+﻿"""
+Pipeline de generación de transcripciones sintéticas mediante Mistral (Ollama local).
+
+Mismos tres modos que el backend de Gemini (zero-shot / low-resource / full-real),
+pero usando un modelo local vía Ollama para evitar costes de API y operar en entornos
+sin acceso a internet desde el nodo de cómputo.  El presupuesto de contexto (num_ctx)
+se calcula dinámicamente a partir del percentil 95 del dataset real.
+"""
+
+import argparse
 import sys
 import math
 import logging
@@ -19,7 +28,6 @@ from prompt_system import (
 from ollama_backend import generar_dialogo_paciente_prompt, resolve_ollama_num_predict
 
 
-# Configurar logs de transformers para que no sean molestos
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 parser = argparse.ArgumentParser()
@@ -46,13 +54,11 @@ if real_pct < 0 or real_pct > 100:
 synthetic_pct = 100 - real_pct
 input_real_pct = 100 if real_pct == 0 else real_pct
 
-# --- Semántica ---
-# real=0   -> zero-shot: se genera synthetic100 sin usar ejemplos reales como contexto.
-# real<100 -> low-resource: se genera el complemento synthetic(100-real).
-# real=100 -> full-real: no hay síntesis.
+# real=0   → zero-shot (se genera synthetic100 sin usar ejemplos reales como contexto).
+# real<100 → low-resource (se complementa la fracción real con datos sintéticos).
+# real=100 → full-real (no hay síntesis).
 is_zero_shot = (real_pct == 0)
 
-# Configuracion basica
 if input_real_pct == 100:
     INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
 else:
@@ -68,29 +74,29 @@ RANDOM_SEED = 42
 
 TOKENIZER: Any = None
 
-# =========== TOKENIZER PARA TENER EN CUENTA LA VENTANA DE CONTEXTO DEL LLM =========== #
+
 def get_tokenizer():
-    """Carga diferida del tokenizador para evitar dependencias en el self-check."""
+    """Carga diferida del tokenizador para no bloquear el self-check."""
     global TOKENIZER
     if TOKENIZER is None:
         print("Cargando tokenizador de Mistral...")
         try:
             from transformers import AutoTokenizer
-            # Usamos el tokenizer de Mistral-7B-Instruct-v0.2 que comparte vocabulario con Mistral Small y es menos pesado
+            # Mistral-7B-Instruct-v0.2 comparte vocabulario con Mistral Small y pesa menos en caché.
             TOKENIZER = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
         except Exception as e:
             sys.exit(f"Error cargando tokenizer (asegúrate de tener internet o el modelo en caché): {e}")
     return TOKENIZER
 
+
 def contar_tokens_reales(texto: str) -> int:
-    """Cuenta tokens EXACTOS usando el tokenizer de Mistral."""
+    """Cuenta tokens exactos usando el tokenizer de Mistral."""
     if not texto:
         return 0
     tokenizer = get_tokenizer()
-    # encode devuelve los IDs, su longitud es el número de tokens
     return len(tokenizer.encode(texto, add_special_tokens=False))
 
-# =========== CARGAR DATOS Y ANALIZAR ESTADÍSTICAS DEL DATASET =========== #
+
 def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
     """Carga el JSONL y deja solo las columnas necesarias para el pipeline."""
     if not ruta.exists():
@@ -111,22 +117,19 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
     if missing_cols:
         sys.exit(f"Faltan columnas obligatorias en '{ruta}': {missing_cols}")
 
-    # Normalización básica
     df["Age"] = pd.to_numeric(df.get("Age"), errors="coerce")
     df["MMSE"] = pd.to_numeric(df.get("MMSE"), errors="coerce")
     df["Gender"] = df.get("Gender").astype(str).str.strip().str.upper()
 
-    # Conteo RAW: antes de eliminar por Age/MMSE
+    # Conteo antes del filtrado, para que los objetivos de generación reflejen el dataset completo.
     conteo_diagnosticos_raw = (
         df.dropna(subset=["Diagnosis"])["Diagnosis"].value_counts().to_dict()
     )
 
-    # Filtrado para el pipeline
     df_filtrado = df.dropna(
         subset=["Text_interviewer_participant", "Diagnosis", "Age", "MMSE"]
     ).copy()
 
-    # debug para ver cuánto se pierde
     print(f"[INFO] Filas raw: {len(df)} | Filas pipeline: {len(df_filtrado)}")
 
     return df_filtrado, conteo_diagnosticos_raw
@@ -139,19 +142,17 @@ def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.Dat
     df2 = df.copy()
     df2["Gender"] = df2["Gender"].astype("string").str.strip().str.upper()
 
-    # --- Porcentaje GLOBAL ---
     gender_pct = df2["Gender"].value_counts(normalize=True)
     female_pct = gender_pct.get("F", 0.0) * 100
     male_pct = gender_pct.get("M", 0.0) * 100
 
-    # --- Porcentaje POR DIAGNOSTICO ---
     counts = (
         df2.groupby(["Diagnosis", "Gender"])
         .size()
         .unstack(fill_value=0)
         .reindex(columns=["F", "M"], fill_value=0)
     )
-    pct = counts.div(counts.sum(axis=1), axis=0) * 100  # cada fila suma 100
+    pct = counts.div(counts.sum(axis=1), axis=0) * 100
 
     print("\n" + "=" * 70)
     print("ESTADISTICA DESCRIPTIVA")
@@ -173,8 +174,6 @@ def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.Dat
         n = int(counts.loc[diag].sum())
         print(f"  - {diag}: F {f:.2f}% | M {m:.2f}%  (n={n})")
 
-    # --- CÁLCULO DE N_SAMPLES DINÁMICO ---
-    # Obtenemos cuántas filas hay por cada diagnóstico
     print("\nObjetivos de Generación (basado en input RAW):")
     for diag, count in conteo_diagnosticos.items():
         print(f"  -> Diagnóstico: {diag:<10} | Cantidad a generar: {count}")
@@ -213,7 +212,6 @@ def calcular_num_ctx_ollama(df: pd.DataFrame, output_tokens_budget: int, zero_sh
 
     return recommended_num_ctx
 
-# =========== LÓGICA DEL PROGRAMA : GENERACIÓN DEL TARGET A GENERAR, BÚSQUEDA DE SUS VECINOS Y GENERACIÓN DEL DIÁLOGO SINTÉTICO =========== #
 def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: str, n_samples: int, seed: int,) -> list[dict]:
     """
     Genera perfiles sintéticos SOLO para un diagnóstico:
@@ -226,20 +224,18 @@ def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: s
     df2 = df.copy()
     df2["Gender"] = df2["Gender"].astype("string").str.strip().str.upper()
 
-    # Nos quedamos solo con el diagnóstico objetivo
     g = df2[df2["Diagnosis"] == diagnosis_objetivo]
     if g.empty:
         return []
 
-    # --- Age bootstrap ---
+    # Age y MMSE: bootstrap sobre valores reales del diagnóstico.
     age_values = g["Age"].dropna().to_numpy()
-    age_min = float(stats.loc[diagnosis_objetivo, ("Age", "min")]) 
+    age_min = float(stats.loc[diagnosis_objetivo, ("Age", "min")])
     age_max = float(stats.loc[diagnosis_objetivo, ("Age", "max")])
 
-    # --- MMSE bootstrap ---
     mmse_values = g["MMSE"].dropna().to_numpy()
 
-    # --- Gender por proporción del diagnóstico ---
+    # Género: samplear según proporción real del diagnóstico, no del dataset completo.
     gender_probs = g["Gender"].value_counts(normalize=True)
     p_f = float(gender_probs.get("F", 0.0))
     p_m = float(gender_probs.get("M", 0.0))
@@ -290,14 +286,14 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
     if df_filtrado.empty:
         return None
 
-    # Normalización Min-Max para el cálculo de distancias
     norm_target = {}
     for col in ["Age", "MMSE"]:
-        # Para la Normalización tenemos en cuenta los valores en el dataset real, para no restringir tantos valores
+        # Min-max calculado sobre el dataset real completo, no solo df_filtrado,
+        # para que la escala de normalización sea consistente entre vecindarios.
         c_min = df_real[col].min()
         c_max = df_real[col].max()
 
-        # Si max=min, toda la columna es constante; fijamos 0.5 para todos.
+        # Si toda la columna es constante, asignamos 0.5 para evitar división por cero.
         if c_max == c_min:
             df_filtrado[f"{col}_n"] = 0.5
             norm_target[col] = 0.5
@@ -305,7 +301,6 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
             df_filtrado[f"{col}_n"] = (df_filtrado[col] - c_min) / (c_max - c_min)
             norm_target[col] = (target[col] - c_min) / (c_max - c_min)
 
-    # Cálculo de Distancia Euclídea
     df_filtrado["dist"] = np.sqrt(
         (df_filtrado["Age_n"] - norm_target["Age"]) ** 2
         + (df_filtrado["MMSE_n"] - norm_target["MMSE"]) ** 2
@@ -313,8 +308,8 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     return df_filtrado.sort_values("dist").head(k)
 
-def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFrame,num_ctx: int,zero_shot: bool = False,) -> str | None:
-    """Wrapper de compatibilidad: delega en el módulo de prompt system."""
+def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFrame, num_ctx: int, zero_shot: bool = False) -> str | None:
+    """Delega la generación en el backend de Ollama."""
     tokenizer = get_tokenizer()
     return generar_dialogo_paciente_prompt(
         dataset_name=dataset_name,
@@ -327,16 +322,11 @@ def generar_dialogo_paciente(dataset_name: str,target: dict,vecinos: pd.DataFram
         zero_shot=zero_shot,
     )
 
-# =========== PROGRAMA PRINCIPAL =========== #
 def main() -> None:
     print("Cargando datos...")
-    # conteo_raw es algo tipo: {'Dementia': 204, 'HC': 194, 'MCI': 34}
-    df_real, conteo_raw = cargar_datos(INPUT_PATH)
-    
-    # Coger el prompt necesario para el dataset
+    df_real, conteo_raw = cargar_datos(INPUT_PATH)  # ej: {'Dementia': 204, 'HC': 194, 'MCI': 34}
+
     prompt_spec = get_prompt_spec(dataset)
-    
-    # Calcular el output budget
     ollama_output_budget = resolve_ollama_num_predict(prompt_spec)
     
     if is_zero_shot and prompt_spec.zero_shot_user_template is None:
@@ -368,7 +358,6 @@ def main() -> None:
         print("\n[FULL-REAL MODE] real100. No se generan datos sintéticos.")
         return
             
-    # Calculamos stats 
     stats = analizar_estadisticas(df_real, conteo_raw)
     recommended_num_ctx = calcular_num_ctx_ollama(
         df_real,
@@ -388,16 +377,15 @@ def main() -> None:
             continue
         
         print(f"\n>>> PROCESANDO DIAGNÓSTICO: {diag_objetivo} | META: {n_objetivo} muestras")
-        samples_needed = n_objetivo 
-        
-        # Contador global para este diagnóstico para variar la seed si hace falta
+        samples_needed = n_objetivo
+
+        # Varía la seed en cada reintento para evitar generar exactamente los mismos targets.
         attempt_counter = 0
-        
+
         while samples_needed > 0:
 
             print(f"Generando batch para {samples_needed} muestras faltantes...")
-            
-            # Pasamos samples_needed
+
             current_seed = RANDOM_SEED + attempt_counter + samples_needed
             targets = generar_targets(df_real, stats, diagnosis_objetivo=diag_objetivo, 
                                     n_samples=samples_needed, seed=current_seed)
@@ -411,7 +399,6 @@ def main() -> None:
                 else:
                     vecinos = buscar_vecinos_knn(target, df_real, k=K_NEIGHBORS)
 
-                    # --- VALIDACIÓN VECINOS ---
                     if vecinos is None or vecinos.empty:
                         batch_bad += 1
                         print(f"Descartado (sin vecinos): {target}")
@@ -425,7 +412,6 @@ def main() -> None:
                     zero_shot=is_zero_shot,
                 )
 
-                # --- VALIDACIÓN DATASET-AWARE ---
                 if not validate_generated_text(generated_text, prompt_spec):
                     batch_bad += 1
                     print(f"Descartado (texto inválido para dataset='{dataset}'): {target}")
@@ -433,7 +419,6 @@ def main() -> None:
                     print((generated_text or "<None>")[:500])
                     continue
 
-                # --- SI LLEGA AQUÍ, ES VÁLIDO ---
                 neighbors_meta = (
                     []
                     if is_zero_shot
@@ -450,7 +435,7 @@ def main() -> None:
 
                 if SAVE:
                     writer.write(json.dumps(sample, ensure_ascii=False) + "\n")
-                    writer.flush() # Asegura que se guarde en disco inmediatamente
+                    writer.flush()  # Escritura inmediata: si el job muere, no se pierden muestras ya válidas.
                 else:
                     print(json.dumps(sample, ensure_ascii=False)[:400] + "...")
 
@@ -458,16 +443,15 @@ def main() -> None:
 
             print(f"Batch finalizado. Guardadas: {batch_ok} | Descartadas: {batch_bad}")
             
-            # Actualizamos el while: solo pedimos las que fallaron
-            samples_needed = batch_bad 
+            # Solo reintentamos las muestras que fallaron la validación.
+            samples_needed = batch_bad
             attempt_counter += 1
-            
-            # SEGURIDAD: Si llevamos más de 10 intentos extra y no avanza, paramos este diagnóstico
+
+            # Límite de seguridad: evita bucles infinitos si el modelo sigue fallando.
             if attempt_counter > 10:
                 print(f"ABORTANDO {diag_objetivo}: Demasiados intentos fallidos ({attempt_counter}).")
                 break
 
-    # --- CERRAMOS EL ARCHIVO FUERA DEL WHILE (Importante) ---
     if writer is not None:
         writer.close()
         

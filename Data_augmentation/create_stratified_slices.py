@@ -1,3 +1,11 @@
+"""
+Genera subconjuntos reales estratificados y anidados para los experimentos de bajo recurso.
+
+Por cada porcentaje en PERCENTAGES escribe un train_{dataset}_real{pct}.jsonl con las
+filas de menor percentil por grupo diagnóstico. Al ser anidados (real20 ⊆ real40 ⊆ real60 ⊆ real80),
+se puede medir el efecto de añadir más datos reales manteniendo el balance de clases constante.
+"""
+
 import argparse
 from pathlib import Path
 
@@ -10,7 +18,10 @@ OUTPUT_DIR = Path("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/real
 PERCENTAGES = (20, 40, 60, 80)
 RANDOM_STATE = 42
 
+
 def shuffle_and_assign_percentile(group: pd.DataFrame) -> pd.DataFrame:
+    # Asigna un rango percentil [0, 1] dentro de cada grupo diagnóstico para que
+    # el filtrado por umbral produzca subconjuntos anidados y balanceados por clase.
     shuffled = group.sample(frac=1.0, random_state=RANDOM_STATE).copy()
     n_rows = len(shuffled)
 

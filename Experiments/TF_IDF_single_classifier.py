@@ -1,3 +1,10 @@
+"""
+Clasificador TF-IDF binario por dataset individual (pipeline individual).
+
+Para cada dataset entrena HC vs Dementia o HC vs MCI (Delaware y Taukadial),
+con GridSearchCV sobre Decision Tree, Random Forest, Naive Bayes, SVM y Logistic Regression.
+Incluye visualizaciones 2D/3D de la frontera SVM proyectada con TruncatedSVD.
+"""
 import os
 import sys
 import pandas as pd
@@ -22,9 +29,6 @@ import argparse
 
 LABEL = "Text_interviewer_participant"
 
-# =========================
-# ARGS
-# =========================
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", required=True, help="Nombre del dataset (ej: Pitt, Lu, Baycrest, Delaware, taukadial, ivanova)")
 parser.add_argument("--balanced", action="store_true", help="Usar class_weight='balanced' en los clasificadores")
@@ -36,9 +40,6 @@ BALANCED = args.balanced
 balance_tag = "balanced" if BALANCED else "unbalanced"
 class_weight = "balanced" if BALANCED else None
 
-# =========================
-# PATHS (individual train/test)
-# =========================
 data_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/TFIDF"
 train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}.jsonl")
 test_path = os.path.join(data_dir, f"test_{DATASET_LOWER}.jsonl")
@@ -52,51 +53,37 @@ if not os.path.exists(train_path) or not os.path.exists(test_path):
 train_df = pd.read_json(train_path, lines=True)
 test_df  = pd.read_json(test_path, lines=True)
 
-# =========================
-# BINARIA + definición de clases según dataset
-# =========================
-# Para Delaware y Taukdial: HC vs MCI
+# Delaware y Taukadial solo tienen HC/MCI, no Dementia.
 mci_hc_datasets = {"delaware", "taukadial"}
 
-# Normalizamos diagnóstico por si hay ADs
 train_df["Diagnosis"] = train_df["Diagnosis"].replace("AD", "Dementia")
 test_df["Diagnosis"]  = test_df["Diagnosis"].replace("AD", "Dementia")
 
 if DATASET_LOWER in mci_hc_datasets:
-    # Solo nos quedamos con HC y MCI
     keep = {"HC", "MCI"}
     positive_label = "MCI"
 else:
-    # Solo nos quedamos con HC y Dementia (y quitamos MCI)
     keep = {"HC", "Dementia"}
     positive_label = "Dementia"
 
 train_df = train_df[train_df["Diagnosis"].isin(keep)].copy()
 test_df  = test_df[test_df["Diagnosis"].isin(keep)].copy()
 
-# Seguridad: evitar fallos si te quedas sin datos
 if len(train_df) == 0 or len(test_df) == 0:
     raise ValueError(
         f"Tras filtrar clases {keep}, te quedaste con train={len(train_df)} / test={len(test_df)}.\n"
         "Revisa que ese dataset realmente tenga esas clases."
     )
 
-# =========================
-# CONFIDENCE helper
-# =========================
 def _get_confidence(estimator, X):
     if hasattr(estimator, "predict_proba"):
         proba = estimator.predict_proba(X)
         return proba.max(axis=1)
     elif hasattr(estimator, "decision_function"):
         dec = estimator.decision_function(X)
-        # binario -> vector 1D
         return np.abs(dec) if dec.ndim == 1 else (np.partition(dec, -2, axis=1)[:, -1] - np.partition(dec, -2, axis=1)[:, -2])
     return None
 
-# =========================
-# SVM representations
-# =========================
 def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_params, dataset_name, positive_label, out_path=None, random_state=42):
     """
     Visualiza una frontera SVM en 2D:
@@ -105,13 +92,11 @@ def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_para
     - Entrena SVM con best_params (kernel/C)
     - Dibuja frontera (nivel 0) y márgenes (niveles ±1)
     """
-    # 1) Proyección a 2D (sparse-friendly)  
     svd = TruncatedSVD(n_components=2, random_state=random_state)
     Xtr_2d = svd.fit_transform(X_train_tfidf)
     Xte_2d = svd.transform(X_test_tfidf)
 
-    # 2) Pipeline escalado + SVM con mejores parámetros
-    # (SVC suele agradecer escalado en 2D)
+    # SVC se beneficia del escalado porque opera en espacio euclídeo, no en el TF-IDF original.
     svm_kwargs = {
         "kernel": best_params.get("kernel", "linear"),
         "C": best_params.get("C", 1.0),
@@ -123,7 +108,6 @@ def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_para
     ])
     clf2d.fit(Xtr_2d, y_train)
 
-    # 3) Crear malla
     x_min, x_max = Xtr_2d[:, 0].min() - 0.8, Xtr_2d[:, 0].max() + 0.8
     y_min, y_max = Xtr_2d[:, 1].min() - 0.8, Xtr_2d[:, 1].max() + 0.8
     xx, yy = np.meshgrid(
@@ -133,13 +117,10 @@ def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_para
     grid = np.c_[xx.ravel(), yy.ravel()]
     Z = clf2d.decision_function(grid).reshape(xx.shape)
 
-    # 4) Plot
     plt.figure(figsize=(8, 6))
-
     # frontera 0 y márgenes ±1
     plt.contour(xx, yy, Z, levels=[-1, 0, 1], linestyles=["--", "-", "--"])
 
-    # puntos: coloreamos por clase usando marcadores distintos
     classes = ["HC", positive_label]
     markers = {"HC": "o", positive_label: "s"}
 
@@ -174,12 +155,11 @@ def plot_svm_svd3d_scatter(X_train_tfidf, y_train, X_test_tfidf, y_test,
     - (Opcional) entrena SVM 3D solo para coherencia, pero NO dibuja hiperplano
     - Dibuja scatter 3D train/test por clase
     """
-    # 1) Proyección a 3D
     svd = TruncatedSVD(n_components=3, random_state=random_state)
     Xtr_3d = svd.fit_transform(X_train_tfidf)
     Xte_3d = svd.transform(X_test_tfidf)
 
-    # 2) Entrenamos SVM 3D (no obligatorio, pero útil si quieres asegurar consistencia)
+    # El SVM 3D no se dibuja, pero se entrena para mantener coherencia con los parámetros del grid.
     svm_kwargs = {
         "kernel": best_params.get("kernel", "linear"),
         "C": best_params.get("C", 1.0),
@@ -190,7 +170,6 @@ def plot_svm_svd3d_scatter(X_train_tfidf, y_train, X_test_tfidf, y_test,
     ])
     clf3d.fit(Xtr_3d, y_train)
 
-    # 3) Plot 3D
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
 
@@ -219,9 +198,6 @@ def plot_svm_svd3d_scatter(X_train_tfidf, y_train, X_test_tfidf, y_test,
     else:
         plt.show()
 
-# =========================
-# RUN TF-IDF
-# =========================
 def run_tfidf_binary(train_df, test_df, random_state=42):
     X_train_text = train_df[LABEL].astype(str)
     y_train = train_df["Diagnosis"].astype(str)
@@ -244,11 +220,8 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
 
     results = []
     
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state) 
-    # Hacemos este cv con StratifiedKFold para asegurar que en cada fold
-    # se mantiene la proporción de clases del conjunto de entrenamiento.
-    # El uso de shuffle y random_state garantiza que los splits sean aleatorios
-    # y reproducibles, de manera que no dependan del orden de los datos.
+    # StratifiedKFold preserva la proporción de clases en cada fold; crítico para los datasets clínicos desbalanceados.
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
 
     for name, (clf, params) in classifiers.items():
         grid_search = GridSearchCV(clf, params, cv=cv, scoring="f1_macro")
@@ -293,7 +266,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
             print(f"[SVM] Figura 3D guardada en: {fig_path_3d}")
 
 
-        # ====== Resumen ======
         eval_df = test_df.copy()
         eval_df["_text"] = X_test_text.values
         eval_df["y_true"] = y_test.values
@@ -321,7 +293,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         print("Fallos por clase (y_true):")
         print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
 
-        # Matriz confusión en orden fijo: HC primero, luego la positiva
         labels_order = ["HC", positive_label]
         cm = confusion_matrix(eval_df["y_true"], eval_df["y_pred"], labels=labels_order)
         cm_df = pd.DataFrame(
@@ -332,7 +303,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         print("\nMatriz de confusión (HC primero):")
         print(cm_df)
 
-        # Métricas
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         metrics_dict = {
@@ -367,9 +337,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
 
     return pd.DataFrame(results)
 
-# =========================
-# LOG + RUN + SAVE EXCEL
-# =========================
 log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
 os.makedirs(log_dir, exist_ok=True)
 
