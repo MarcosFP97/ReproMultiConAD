@@ -48,7 +48,7 @@ Los datos normalizados siguen el esquema `NormalizedDataPoint` en JSONL:
 }
 ```
 
-Los datasets originales no se distribuyen en este repositorio. Para ejecutar el proyecto en otra máquina, adaptar las rutas en los scripts (o en `CLAUDE.md`).
+Los datasets originales no se distribuyen en este repositorio. Para ejecutar el proyecto en otra máquina, adaptar las rutas en los scripts.
 
 ---
 
@@ -73,11 +73,8 @@ preprocessing_text/       ← Limpieza de texto + marcas CHAT → tokens especia
 data_augmentation/        ← Generación sintética (Gemini / Mistral)
     │
     ▼
-BERT_balanced.py          ← Entrenamiento con datos reales + sintéticos
-    │
-    ▼
-shap_analysis.py          ← Interpretabilidad
-infer_bert_patient.py     ← Análisis cross-dataset
+BERT_balanced.py          ← Entrenamiento de los datasets con datos reales + sintéticos + cross-dataset
+
 ```
 
 ---
@@ -87,14 +84,12 @@ infer_bert_patient.py     ← Análisis cross-dataset
 | # | Experimento | Script principal |
 |---|---|---|
 | 1 | Baselines TF-IDF (SVM, RF, NB, DT, LR) | `experiments/TF_IDF_classifier.py` |
-| 2 | TF-IDF por dataset individual (balanceado/no) | `experiments/TF_IDF_single_classifier.py` |
-| 3 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
-| 4 | BERT binario y multiclase | `experiments/BERT_classification.py` |
-| 5 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
-| 6 | BERT con balanceo de clases | `experiments/BERT_balanced.py` |
+| 2 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
+| 3 | BERT | `experiments/BERT_classification.py` |
+| 4 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
+| 5 | TF-IDF por dataset individual (no balanceado/balanceado) | `experiments/TF_IDF_single_classifier.py` |
+| 6 | BERT con balanceo de clases para experimentos individuales y cross-dataset | `experiments/BERT_balanced.py` |
 | 7 | Aumento sintético (0–80% datos reales) | `data_augmentation/generacion_sintetica_*.py` |
-| 8 | Interpretabilidad SHAP | `experiments/shap_analysis.py` |
-| 9 | Transferencia cross-dataset | `infer_bert_patient.py` |
 
 ### Marcas CHAT como tokens especiales
 
@@ -112,7 +107,7 @@ La generación se condiciona con diagnóstico, edad, género, MMSE y ejemplos re
 0% · 20% · 40% · 60% · 80% · 100%
 ```
 
-Modelos disponibles: **Gemini** (API) y **Mistral** (Ollama en HPC).
+Modelos disponibles: **Gemini 2.5 Flash** (API) y **Mistral Small 3.2** (Ollama en HPC).
 
 ---
 
@@ -122,10 +117,10 @@ Modelos disponibles: **Gemini** (API) y **Mistral** (Ollama en HPC).
 ConvoCognition/
 ├── audio_transcription/       # Transcripción automática de audio
 ├── data_augmentation/         # Generación sintética con Gemini y Mistral
-├── experiments/               # TF-IDF, E5, BERT, SHAP y evaluación
+├── experiments/               # TF-IDF, E5, BERT
 ├── extracting_data/           # Extracción y normalización de datos CHAT
 ├── markers_analysis/          # Análisis de pausas, repeticiones y reformulaciones
-├── metadata_integration/      # Loaders y Enrichers por dataset
+├── metadata_integration/      # Loaders y Enrichers por dataset (para incorporar informacion externa a los jsonl)
 ├── preprocessing_text/        # Limpieza textual y marcas CHAT
 ├── scripts/
 │   ├── datasets_creation/     # Parseo, limpieza y creación de JSONL
@@ -135,7 +130,7 @@ ConvoCognition/
 
 Los scripts SLURM están separados por propósito:
 
-- `scripts/datasets_creation/`: transcripción `00`, parseo `.cha`, limpieza de JSONL y variantes con marcas CHAT.
+- `scripts/datasets_creation/`: transcripción, parseo `.cha`, limpieza de JSONL y variantes con marcas CHAT.
 - `scripts/experimental_pipeline/`: experimentos numerados (`01a`, `01b`, …). La letra `a` corresponde a inglés y la `b` a español.
 
 ---
@@ -167,7 +162,7 @@ Los scripts esperan datos y modelos en:
 ```
 /mnt/beegfs/groups/irgroup/sara_tfg/
 ├── jsonl/          # Datos normalizados
-├── results/        # Resultados y métricas
+├── results/        # Resultados y métricas en .xlsx
 ├── logs/           # Logs de ejecución
 └── MultiConAD/Experiments/BERT_Models/  # Checkpoints
 ```
@@ -192,10 +187,10 @@ sbatch scripts/datasets_creation/03_preprocess_marker_features.sh
 
 ## Limitaciones
 
-- Los datasets son pequeños y heterogéneos; los resultados pueden ser sensibles a la partición.
-- La clase MCI está subrepresentada y es la más difícil de detectar.
-- Las tareas cognitivas no siempre son comparables entre datasets.
-- Los datos sintéticos pueden introducir artefactos generativos.
+- Los datasets son pequeños y heterogéneos; los resultados pueden ser muy sensibles a la partición.
+- La clase MCI está subrepresentada y es la más difícil de detectar; esto se contempla con intensidad en los análisis de datasets individuales
+- Las tareas cognitivas no siempre son comparables entre datasets (descripción de imágen, tarea narrativa, entrevista personal...)
+- Los datos sintéticos pueden introducir artefactos generativos (a pesar de que se intente controlar con firmeza a traves del codigo).
 - El código contiene rutas absolutas del entorno HPC y requiere adaptación para otros entornos.
 
 ---
