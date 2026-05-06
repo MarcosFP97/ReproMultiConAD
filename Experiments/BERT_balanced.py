@@ -17,7 +17,7 @@ import numpy as np
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
 
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import Trainer, TrainingArguments
@@ -454,7 +454,8 @@ def compute_metrics(pred):
     labels = pred.label_ids
     preds = pred.predictions.argmax(-1)
     acc = accuracy_score(labels, preds)
-    return {"accuracy": acc}
+    macro_f1 = f1_score(labels, preds, average="macro", zero_division=0)
+    return {"accuracy": acc, "macro_f1": macro_f1}
 
 def describe_token_lengths(df, tokenizer, text_col, max_len):
     lengths = df[text_col].apply(lambda x: len(tokenizer.tokenize(str(x))))
@@ -596,8 +597,11 @@ def main():
         learning_rate=LR,
         eval_strategy="epoch",
         save_strategy="epoch",
-        # Recupera el checkpoint con mejor accuracy de validación, no el del último epoch.
+        # En clases desbalanceadas, macro-F1 evita seleccionar un checkpoint que colapse a la clase mayoritaria.
         load_best_model_at_end=True,
+        metric_for_best_model="macro_f1",
+        greater_is_better=True,
+        save_total_limit=1,
         logging_dir='./logs',
         logging_steps=10,
     )
@@ -714,7 +718,7 @@ def main():
             print(f"- true={row['true_label']} | pred={row['pred_label']} | conf={row['confidence']:.3f} | {txt}")
 
         print(f"\n[TEST:{eval_dataset_name}] Classification report:")
-        print(classification_report(y_true, y_pred, target_names=label_encoder.classes_))
+        print(classification_report(y_true, y_pred, target_names=label_encoder.classes_, zero_division=0))
         print(f"[TEST:{eval_dataset_name}] Confusion matrix:")
         print(confusion_matrix(y_true, y_pred))
 
