@@ -4,7 +4,6 @@ deterioro cognitivo a partir de transcripciones conversacionales.
 
 Soporta tres modos experimentales:
   - individual : entrena y evalúa en el mismo dataset (split interno 80/20).
-  - cross       : entrena en un dataset y evalúa en otro.
   - synthetic   : entrena con distintas proporciones de datos reales y sintéticos.
 
 El modo individual acepta --cross-test-datasets para evaluar el modelo ya entrenado
@@ -41,21 +40,15 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--mode",
     type=str,
-    choices=["individual", "cross", "synthetic"],
+    choices=["individual", "synthetic"],
     default="individual",
-    help="Diseño experimental: individual, cross o synthetic.",
+    help="Diseño experimental: individual o synthetic.",
 )
 parser.add_argument(
     "--train-dataset",
     type=str,
     required=True,
     help="Dataset usado para entrenar (ej: ivanova, pitt, taukadial).",
-)
-parser.add_argument(
-    "--test-dataset",
-    type=str,
-    default=None,
-    help="Dataset usado para evaluar. Obligatorio en mode=cross; opcional en synthetic.",
 )
 parser.add_argument(
     "--cross-test-datasets",
@@ -114,7 +107,7 @@ args = parser.parse_args()
 
 mode = args.mode
 train_dataset = args.train_dataset.strip().lower()
-test_dataset = args.test_dataset.strip().lower() if args.test_dataset else None
+test_dataset = train_dataset
 cross_test_datasets = []
 for dataset_name in args.cross_test_datasets:
     dataset_name = dataset_name.strip().lower()
@@ -139,12 +132,6 @@ BINARY_TASK_LABELS = {
 KEEP_LABEL_VALUES = BINARY_TASK_LABELS[binary_task] if binary_task else None
 EXPERIMENT_TASK = task if binary_task is None else f"{task}_{binary_task}"
 
-if mode == "cross" and not test_dataset:
-    parser.error("--test-dataset es obligatorio cuando --mode cross.")
-
-if mode == "cross" and cross_test_datasets:
-    parser.error("--cross-test-datasets debe usarse entrenando una vez con mode=individual o mode=synthetic, no junto a mode=cross.")
-
 if mode != "synthetic":
     if args.real_percentage is not None or args.synthetic_percentage is not None:
         parser.error("--real-percentage y --synthetic-percentage solo deben usarse con --mode synthetic.")
@@ -166,17 +153,10 @@ def synthetic_train_path(dataset_name: str, percentage: int, source: str) -> str
     return os.path.join(DATA_ROOT, "synthetic_data", "synthetic", f"train_{dataset_name}_synthetic{percentage}_{source}.jsonl")
 
 if mode == "individual":
-    test_dataset = train_dataset
     TRAIN_PATHS = [os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl")]
     TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
     EXPERIMENT_ID = f"bert_balanced_individual_{EXPERIMENT_TASK}_{train_dataset}"
-elif mode == "cross":
-    TRAIN_PATHS = [os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl")]
-    TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
-    EXPERIMENT_ID = f"bert_balanced_cross_{EXPERIMENT_TASK}_train-{train_dataset}_test-{test_dataset}"
 else:
-    test_dataset = test_dataset or train_dataset
-
     if train_source == "real":
         if args.real_percentage is None:
             parser.error("--real-percentage es obligatorio con --train-source real.")

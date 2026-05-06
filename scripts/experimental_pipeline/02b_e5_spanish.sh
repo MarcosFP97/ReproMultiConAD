@@ -17,5 +17,5 @@ export LANG=C.UTF-8
 
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/e5_larg_classifier.py"
 
-python "$SCRIPT_PATH" --test_language spa --task binary --translated no
-python "$SCRIPT_PATH" --test_language spa --task multiclass --translated no
+python "$SCRIPT_PATH" --test_language spa --task binary
+python "$SCRIPT_PATH" --test_language spa --task multiclass

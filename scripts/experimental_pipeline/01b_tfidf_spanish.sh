@@ -16,5 +16,5 @@ export LANG=C.UTF-8
 
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_classifier.py"
 
-python "$SCRIPT_PATH" --test_language spa --task binary --translated no
-python "$SCRIPT_PATH" --test_language spa --task multiclass --translated no
+python "$SCRIPT_PATH" --test_language spa --task binary
+python "$SCRIPT_PATH" --test_language spa --task multiclass

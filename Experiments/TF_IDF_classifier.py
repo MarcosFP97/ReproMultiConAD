@@ -26,7 +26,6 @@ LABEL = 'Text_interviewer_participant'
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_language', required=True)
 parser.add_argument('--task', required=True)
-parser.add_argument('--translated', required=True, help="'yes' para usar texto traducido al inglés")
 
 args_slurm = parser.parse_args()
 
@@ -77,11 +76,7 @@ def _get_confidence(estimator, X):
         return None
 
 
-if args_slurm.translated== "yes":
-    train_en['translated'] = train_en[LABEL]
-    test_en['translated'] = test_en[LABEL]
-
-def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_state=42,task=None,translated=None):
+def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_state=42, task=None):
 
     train_combined = pd.concat(train_dfs, ignore_index=True)
     if any(df.equals(train_en) for df in train_dfs):
@@ -90,10 +85,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     if task == "binary":
         train_combined = train_combined[train_combined['Diagnosis'] != 'MCI']
 
-    if translated == "yes":
-         X_train = train_combined['translated']
-    else:
-        X_train = train_combined[LABEL]
+    X_train = train_combined[LABEL]
     y_train = train_combined['Diagnosis']
 
     tfidf = TfidfVectorizer()
@@ -105,10 +97,7 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
     if task == "binary":
         test_df = test_df[test_df['Diagnosis'] != 'MCI']
 
-    if translated == "yes":
-        X_test = test_df['translated']
-    else:
-        X_test = test_df[LABEL]
+    X_test = test_df[LABEL]
 
     y_test = test_df['Diagnosis']
 
@@ -240,7 +229,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
             "Accuracy": report["accuracy"],
             "Test Language": test_language,
             "Task": task,
-            "Translated": translated,
             "Representation": "TF-IDF"
         }
 
@@ -285,7 +273,6 @@ def classify_language_dataset_TFIDF(train_dfs, test_dfs, test_language, random_s
         print(f"DataFrame in training set: {df_name}")
     print(task)
     print("TF-IDF")
-    print("Translation status: ",translated)
 
 log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
 os.makedirs(log_dir, exist_ok=True)
@@ -301,6 +288,6 @@ sys.stderr = sys.stdout
 
 print(f"Logging en: {log_path}\n")
 
-classify_language_dataset_TFIDF(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task,translated=args_slurm.translated)
+classify_language_dataset_TFIDF(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task)
 
 sys.stdout.close()

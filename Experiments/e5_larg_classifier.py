@@ -24,7 +24,6 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_language', required=True)
 parser.add_argument('--task', required=True)
-parser.add_argument('--translated', required=True)
 
 args_slurm = parser.parse_args()
 
@@ -72,11 +71,6 @@ def _get_confidence(estimator, X):
     return None
 
 
-# Add a column for translated text for English dataset
-if args_slurm.translated== "yes":
-    train_en['translated'] = train_en['Text_interviewer_participant']
-    test_en['translated'] = test_en['Text_interviewer_participant']
-
 def extract_embeddings(df, text_column, label_column):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = SentenceTransformer('intfloat/multilingual-e5-large').to(device)
@@ -86,7 +80,7 @@ def extract_embeddings(df, text_column, label_column):
     embeddings = model.encode(texts, normalize_embeddings=True,device=device)
     return np.vstack(embeddings), np.array(labels)
 
-def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state=42,task=None,translated=None):
+def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_state=42, task=None):
     # Combine the train sets from all languages
     train_combined = pd.concat(train_dfs, ignore_index=True)
     if any(df.equals(train_en) for df in train_dfs):
@@ -94,10 +88,7 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
     if task== "binary":
         train_combined = train_combined[train_combined['Diagnosis'] != 'MCI']
     # Extract embeddings and labels for the combined train set
-    if translated == "yes":  
-        X_train, y_train = extract_embeddings(train_combined, 'translated', 'Diagnosis')
-    else:
-        X_train, y_train = extract_embeddings(train_combined, 'Text_interviewer_participant', 'Diagnosis')
+    X_train, y_train = extract_embeddings(train_combined, 'Text_interviewer_participant', 'Diagnosis')
     
     
     # Select the appropriate test set based on the test_language argument
@@ -108,12 +99,8 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
     if task == "binary":
         test_df = test_df[test_df['Diagnosis'] != 'MCI']
     
-    if translated == "yes":
-        X_test_text = test_df["translated"].astype(str)
-        X_test, y_test = extract_embeddings(test_df, 'translated', 'Diagnosis')
-    else:
-        X_test_text = test_df["Text_interviewer_participant"].astype(str)
-        X_test, y_test = extract_embeddings(test_df, 'Text_interviewer_participant', 'Diagnosis')
+    X_test_text = test_df["Text_interviewer_participant"].astype(str)
+    X_test, y_test = extract_embeddings(test_df, 'Text_interviewer_participant', 'Diagnosis')
     
     # Para guardar los resultados en un excel
     results = []
@@ -236,7 +223,6 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
             "Accuracy": report["accuracy"],
             "Test Language": test_language,
             "Task": task,
-            "Translated": translated,
             "Representation": "e5-large"
         }
 
@@ -292,7 +278,6 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language,random_state
         print(f"DataFrame in training set: {df_name}")
     print(task)
     print("e5_large")
-    print("Translation status: ",translated)
 
 
-classify_language_dataset_e5(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task,translated=args_slurm.translated)
+classify_language_dataset_e5(train_dfs, test_dfs, args_slurm.test_language, task=args_slurm.task)
