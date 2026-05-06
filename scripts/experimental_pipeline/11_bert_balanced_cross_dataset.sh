@@ -9,8 +9,6 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/BERT/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda init bash
 conda activate sara_tfg

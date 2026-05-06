@@ -32,7 +32,7 @@ task = args.task
 MODEL_NAME = "bert-base-uncased"
 TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_{language}_e5.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_{language}_e5.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{language}_{task}_len256"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"

@@ -31,7 +31,7 @@ TASK_LABELS = {
 }
 
 DEFAULT_ROOT = Path("/mnt/beegfs/groups/irgroup/sara_tfg")
-DEFAULT_MODEL_ROOT = DEFAULT_ROOT / "MultiConAD" / "Experiments" / "BERT_Models"
+DEFAULT_MODEL_ROOT = DEFAULT_ROOT / "ConvoCognition" / "Experiments" / "BERT_Models"
 DEFAULT_TEST_ROOT = DEFAULT_ROOT / "jsonl" / "markers_collections"
 DEFAULT_OUTPUT_ROOT = DEFAULT_ROOT / "results"
 

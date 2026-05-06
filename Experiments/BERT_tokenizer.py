@@ -34,7 +34,7 @@ mode = args.mode
 MODEL_NAME = "bert-base-uncased"
 TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/train_{language}_e5_markers_{mode}.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/test_{language}_e5_markers_{mode}.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/MultiConAD/Experiments/BERT_Models/bert_{language}_{task}_{mode}_len256"
+OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_{mode}_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
