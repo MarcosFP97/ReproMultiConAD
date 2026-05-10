@@ -5,18 +5,18 @@ deterioro cognitivo a partir de transcripciones conversacionales.
 Soporta tres modos experimentales:
   - individual : entrena y evalúa en el mismo dataset (split interno 80/20).
   - synthetic   : entrena con distintas proporciones de datos reales y sintéticos.
-
-El modo individual acepta --cross-test-datasets para evaluar el modelo ya entrenado
-en datasets adicionales sin reentrenar (evaluación cross-dataset eficiente).
+  - cross_task  : entrena con train+test de un dataset y evalúa datasets externos.
 """
 import os
 import argparse
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from typing import Optional
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
+from sklearn.dummy import DummyClassifier
 
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import Trainer, TrainingArguments
@@ -40,9 +40,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--mode",
     type=str,
-    choices=["individual", "synthetic"],
+    choices=["individual", "synthetic", "cross_task"],
     default="individual",
-    help="Diseño experimental: individual o synthetic.",
+    help="Diseño experimental: individual, synthetic o cross_task.",
 )
 parser.add_argument(
     "--train-dataset",
@@ -55,7 +55,7 @@ parser.add_argument(
     nargs="*",
     default=[],
     help=(
-        "Datasets extra de test para evaluar el mismo modelo ya entrenado "
+        "Datasets externos de test para mode=cross_task "
         "(ej: --cross-test-datasets wls taukadial)."
     ),
 )
@@ -69,11 +69,12 @@ parser.add_argument(
 parser.add_argument(
     "--binary-task",
     type=str,
-    choices=["hc_dementia", "hc_mci"],
+    choices=["hc_dementia", "hc_mci", "disease_status"],
     default=None,
     help=(
         "Definición explícita de la tarea binaria. "
-        "hc_dementia conserva HC/Dementia; hc_mci conserva HC/MCI. "
+        "hc_dementia conserva HC/Dementia; hc_mci conserva HC/MCI; "
+        "disease_status mapea HC=NoDisease y MCI/Dementia=Disease. "
         "Si no se indica en task=binary, se usa hc_dementia por compatibilidad."
     ),
 )
@@ -117,20 +118,49 @@ task = args.task
 train_source = args.train_source
 binary_task = args.binary_task
 
-if task == "binary":
+if mode == "cross_task":
+    if task != "binary":
+        parser.error("--mode cross_task requiere --task binary.")
+    if binary_task is not None and binary_task != "disease_status":
+        parser.error("--mode cross_task requiere --binary-task disease_status.")
+    binary_task = "disease_status"
+elif task == "binary":
     binary_task = binary_task or "hc_dementia"
 else:
     if binary_task is not None:
         parser.error("--binary-task solo debe usarse con --task binary.")
     binary_task = None
 
-BINARY_TASK_LABELS = {
-    "hc_dementia": ["HC", "Dementia"],
-    "hc_mci": ["HC", "MCI"],
+BINARY_TASKS = {
+    "hc_dementia": {
+        "keep_labels": ["HC", "Dementia"],
+        "label_mapping": None,
+    },
+    "hc_mci": {
+        "keep_labels": ["HC", "MCI"],
+        "label_mapping": None,
+    },
+    "disease_status": {
+        "keep_labels": ["HC", "MCI", "Dementia"],
+        "label_mapping": {
+            "HC": "NoDisease",
+            "MCI": "Disease",
+            "Dementia": "Disease",
+        },
+    },
 }
 
-KEEP_LABEL_VALUES = BINARY_TASK_LABELS[binary_task] if binary_task else None
+BINARY_TASK_CONFIG = BINARY_TASKS[binary_task] if binary_task else {}
+KEEP_LABEL_VALUES = BINARY_TASK_CONFIG.get("keep_labels")
+LABEL_MAPPING = BINARY_TASK_CONFIG.get("label_mapping")
+EXPECTED_LABEL_VALUES = sorted(set(LABEL_MAPPING.values())) if LABEL_MAPPING else KEEP_LABEL_VALUES
 EXPERIMENT_TASK = task if binary_task is None else f"{task}_{binary_task}"
+
+if mode == "cross_task" and not cross_test_datasets:
+    parser.error("--mode cross_task requiere al menos un dataset en --cross-test-datasets.")
+
+if mode != "cross_task" and cross_test_datasets:
+    parser.error("--cross-test-datasets solo debe usarse con --mode cross_task.")
 
 if mode != "synthetic":
     if args.real_percentage is not None or args.synthetic_percentage is not None:
@@ -156,6 +186,14 @@ if mode == "individual":
     TRAIN_PATHS = [os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl")]
     TEST_PATH = os.path.join(DATA_ROOT, "individual_sets", f"test_{test_dataset}.jsonl")
     EXPERIMENT_ID = f"bert_balanced_individual_{EXPERIMENT_TASK}_{train_dataset}"
+elif mode == "cross_task":
+    TRAIN_PATHS = [
+        os.path.join(DATA_ROOT, "individual_sets", f"train_{train_dataset}.jsonl"),
+        os.path.join(DATA_ROOT, "individual_sets", f"test_{train_dataset}.jsonl"),
+    ]
+    TEST_PATH = None
+    test_dataset = None
+    EXPERIMENT_ID = f"bert_balanced_cross_task_{EXPERIMENT_TASK}_{train_dataset}_full"
 else:
     if train_source == "real":
         if args.real_percentage is None:
@@ -257,7 +295,7 @@ class ClassificationDataset(Dataset):
             "labels": torch.tensor(label, dtype=torch.long),
         }
 
-def load_and_prepare_df(paths, text_col, label_col, keep_label_values=None):
+def load_and_prepare_df(paths, text_col, label_col, keep_label_values=None, label_mapping=None):
     if isinstance(paths, (list, tuple)):
         frames = [pd.read_json(path, lines=True) for path in paths]
         df = pd.concat(frames, ignore_index=True)
@@ -266,15 +304,15 @@ def load_and_prepare_df(paths, text_col, label_col, keep_label_values=None):
 
     df = df[[label_col, text_col]].copy()
 
-    # Distintos corpora usan "AD" o "Dementia" para la misma categoría; normalizamos aquí.
-    df[label_col] = df[label_col].replace("AD", "Dementia")
-
     if keep_label_values is not None:
         before = len(df)
         df = df[df[label_col].isin(keep_label_values)].copy()
         after = len(df)
         if VERBOSE:
             print(f"[DATA] Keep labels {keep_label_values}: {before} -> {after} rows")
+
+    if label_mapping is not None:
+        df[label_col] = df[label_col].map(label_mapping)
 
     df[text_col] = df[text_col].astype(str)
 
@@ -500,12 +538,22 @@ def build_experiment_row(*, y_true: list, y_pred: list, class_names: list, exp_m
 
     return pd.DataFrame([row])
 
-def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list,y_pred: list,class_names: list):
+def save_results_excel(
+    out_path: str,
+    *,
+    summary_row_df: pd.DataFrame,
+    y_true: list,
+    y_pred: list,
+    class_names: list,
+    predictions_df: Optional[pd.DataFrame] = None,
+    baseline_y_pred: Optional[list] = None,
+):
     """
     Excel:
       - summary: 1 fila con métricas + metadatos
       - confusion_matrix: matriz con labels
-      - top_errors: (opcional) errores más confiados
+      - baseline_confusion_matrix: matriz del baseline mayoritario si aplica
+      - predictions: predicciones fila a fila para análisis cross-task
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -519,6 +567,16 @@ def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         summary_row_df.to_excel(writer, index=False, sheet_name="summary")
         cm_df.to_excel(writer, sheet_name="confusion_matrix")
+        if baseline_y_pred is not None:
+            baseline_cm = confusion_matrix(y_true, baseline_y_pred, labels=list(range(len(class_names))))
+            baseline_cm_df = pd.DataFrame(
+                baseline_cm,
+                index=[f"true_{c}" for c in class_names],
+                columns=[f"pred_{c}" for c in class_names],
+            )
+            baseline_cm_df.to_excel(writer, sheet_name="baseline_confusion_matrix")
+        if predictions_df is not None:
+            predictions_df.to_excel(writer, index=False, sheet_name="predictions")
 
     print(f"[SAVE] Excel results saved to: {out_path}")
 
@@ -531,16 +589,23 @@ def main():
     print("[DATA] Train paths:")
     for path in TRAIN_PATHS:
         print(f"  - {path}")
-    print(f"[DATA] Test path: {TEST_PATH}")
-    train_df = load_and_prepare_df(TRAIN_PATHS, TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES)
-    test_df  = load_and_prepare_df(TEST_PATH,  TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES)
-    validate_label_coverage(train_df, LABEL_COL, KEEP_LABEL_VALUES, "TRAIN", " | ".join(TRAIN_PATHS))
-    validate_label_coverage(test_df, LABEL_COL, KEEP_LABEL_VALUES, "TEST", TEST_PATH)
-    print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df)}")
+    if TEST_PATH is not None:
+        print(f"[DATA] Test path: {TEST_PATH}")
+    else:
+        print("[DATA] Test path: none (cross_task trains with full source dataset)")
+    train_df = load_and_prepare_df(TRAIN_PATHS, TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES, LABEL_MAPPING)
+    test_df = None
+    if TEST_PATH is not None:
+        test_df = load_and_prepare_df(TEST_PATH, TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES, LABEL_MAPPING)
+    validate_label_coverage(train_df, LABEL_COL, EXPECTED_LABEL_VALUES, "TRAIN", " | ".join(TRAIN_PATHS))
+    if test_df is not None:
+        validate_label_coverage(test_df, LABEL_COL, EXPECTED_LABEL_VALUES, "TEST", TEST_PATH)
+    print(f"[DATA] Train rows: {len(train_df)} | Test rows: {len(test_df) if test_df is not None else 0}")
 
     print("\n[STEP 2] Label encoding using TRAIN only...")
     train_df, label_encoder = encode_labels_fit(train_df, label_col=LABEL_COL)
-    test_df = encode_labels_transform(test_df, label_col=LABEL_COL, label_encoder=label_encoder)
+    if test_df is not None:
+        test_df = encode_labels_transform(test_df, label_col=LABEL_COL, label_encoder=label_encoder)
     
     print("\n[STEP 3] Splitting TRAIN into train/val...")
     train_texts, val_texts, train_labels, val_labels = split_train_val(train_df, text_col=TEXT_COL)
@@ -560,6 +625,15 @@ def main():
     class_weights_tensor = torch.tensor(class_weights_array, dtype=torch.float)
     if VERBOSE:
         print(f"[WEIGHTS] Class weights: {class_weights_tensor}")
+
+    include_majority_baseline = mode == "cross_task"
+    majority_baseline = None
+    if include_majority_baseline:
+        majority_baseline = DummyClassifier(strategy="most_frequent")
+        majority_baseline.fit(np.zeros((len(train_df), 1)), train_df["label"].values)
+        majority_label_id = int(majority_baseline.predict([[0]])[0])
+        majority_label = label_encoder.inverse_transform([majority_label_id])[0]
+        print(f"[BASELINE] DummyClassifier(strategy='most_frequent') majority label: {majority_label}")
 
     print("\n[STEP 6] Building Datasets for Trainer...")
     train_hf_dataset = ClassificationDataset(train_texts, train_labels, tokenizer, MAX_LEN)
@@ -613,6 +687,9 @@ def main():
         logits = predictions_output.predictions
         y_probs = F.softmax(torch.tensor(logits), dim=1).numpy()
         y_pred = np.argmax(y_probs, axis=1)
+        baseline_y_pred = None
+        if majority_baseline is not None:
+            baseline_y_pred = majority_baseline.predict(np.zeros((len(y_true), 1)))
 
         test_acc = (y_true == y_pred).mean()
         print(f"[TEST:{eval_dataset_name}] Accuracy: {test_acc:.4f}")
@@ -639,10 +716,23 @@ def main():
 
         pred_df = pd.DataFrame(rows)
         pred_df["correct"] = pred_df["true_id"] == pred_df["pred_id"]
+        pred_df["dataset"] = eval_dataset_name
+        pred_df["split"] = eval_mode
+        pred_df["Train_dataset"] = train_dataset
+        pred_df["Test_dataset"] = eval_dataset_name
+        pred_df["Train_source"] = train_source if mode == "synthetic" else ""
+        pred_df["Binary_task"] = binary_task or ""
+        pred_df["Evaluation_experiment_id"] = eval_experiment_id
+        pred_df["Training_experiment_id"] = EXPERIMENT_ID
+        if baseline_y_pred is not None:
+            pred_df["baseline_pred_id"] = baseline_y_pred
+            pred_df["baseline_pred_label"] = [id2label[int(idx)] for idx in baseline_y_pred]
+            pred_df["baseline_correct"] = pred_df["true_id"] == pred_df["baseline_pred_id"]
 
         os.makedirs(RESULTS_DIR, exist_ok=True)
 
         exp_meta = {
+            "Estimator": "BERT_balanced",
             "Model": MODEL_NAME,
             "Max_len": MAX_LEN,
             "Batch_size": BATCH_SIZE,
@@ -657,6 +747,7 @@ def main():
             "Synthetic_source": args.synthetic_source if mode == "synthetic" else "",
             "Binary_task": binary_task or "",
             "Kept_label_values": " | ".join(KEEP_LABEL_VALUES) if KEEP_LABEL_VALUES else "",
+            "Label_mapping": str(LABEL_MAPPING or ""),
             "Train_rows": len(train_df),
             "Test_rows": len(eval_df),
             "Train_trunc_pct": trunc_pct,
@@ -673,6 +764,20 @@ def main():
             class_names=list(label_encoder.classes_),
             exp_meta=exp_meta
         )
+        if baseline_y_pred is not None:
+            baseline_meta = dict(exp_meta)
+            baseline_meta.update({
+                "Estimator": "Dummy_most_frequent",
+                "Model": "DummyClassifier(strategy=most_frequent)",
+                "Output_dir": "",
+            })
+            baseline_summary_row = build_experiment_row(
+                y_true=y_true,
+                y_pred=baseline_y_pred,
+                class_names=list(label_encoder.classes_),
+                exp_meta=baseline_meta
+            )
+            summary_row = pd.concat([summary_row, baseline_summary_row], ignore_index=True)
 
         out_xlsx = os.path.join(RESULTS_DIR, f"{eval_experiment_id}.xlsx")
         save_results_excel(
@@ -680,7 +785,9 @@ def main():
             summary_row_df=summary_row,
             y_true=y_true,
             y_pred=y_pred,
-            class_names=list(label_encoder.classes_)
+            class_names=list(label_encoder.classes_),
+            predictions_df=pred_df,
+            baseline_y_pred=baseline_y_pred,
         )
 
         n_total = len(pred_df)
@@ -700,28 +807,35 @@ def main():
         print(classification_report(y_true, y_pred, target_names=label_encoder.classes_, zero_division=0))
         print(f"[TEST:{eval_dataset_name}] Confusion matrix:")
         print(confusion_matrix(y_true, y_pred))
+        if baseline_y_pred is not None:
+            baseline_acc = accuracy_score(y_true, baseline_y_pred)
+            baseline_macro_f1 = f1_score(y_true, baseline_y_pred, average="macro", zero_division=0)
+            print(f"[BASELINE:{eval_dataset_name}] Accuracy: {baseline_acc:.4f} | Macro-F1: {baseline_macro_f1:.4f}")
+            print(f"[BASELINE:{eval_dataset_name}] Confusion matrix:")
+            print(confusion_matrix(y_true, baseline_y_pred))
 
-    evaluate_and_save(
-        test_df,
-        test_dataset,
-        TEST_PATH,
-        EXPERIMENT_ID,
-        mode,
-    )
+    if test_df is not None:
+        evaluate_and_save(
+            test_df,
+            test_dataset,
+            TEST_PATH,
+            EXPERIMENT_ID,
+            mode,
+        )
 
     for cross_test_dataset in cross_test_datasets:
         cross_test_path = os.path.join(DATA_ROOT, "individual_sets", f"test_{cross_test_dataset}.jsonl")
         print(f"\n[CROSS] Loading extra test dataset: {cross_test_dataset}")
-        cross_test_df = load_and_prepare_df(cross_test_path, TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES)
-        validate_label_coverage(cross_test_df, LABEL_COL, KEEP_LABEL_VALUES, "CROSS TEST", cross_test_path)
+        cross_test_df = load_and_prepare_df(cross_test_path, TEXT_COL, LABEL_COL, KEEP_LABEL_VALUES, LABEL_MAPPING)
+        validate_label_coverage(cross_test_df, LABEL_COL, EXPECTED_LABEL_VALUES, "CROSS TEST", cross_test_path)
         cross_test_df = encode_labels_transform(cross_test_df, label_col=LABEL_COL, label_encoder=label_encoder)
-        cross_experiment_id = f"bert_balanced_cross_{EXPERIMENT_TASK}_train-{train_dataset}_test-{cross_test_dataset}"
+        cross_experiment_id = f"bert_balanced_cross_task_{EXPERIMENT_TASK}_train-{train_dataset}_full_test-{cross_test_dataset}"
         evaluate_and_save(
             cross_test_df,
             cross_test_dataset,
             cross_test_path,
             cross_experiment_id,
-            "cross",
+            "cross_task",
         )
 
 

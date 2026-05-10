@@ -88,8 +88,9 @@ BERT_balanced.py          ← Entrenamiento de los datasets con datos reales + s
 | 3 | BERT | `experiments/BERT_classification.py` |
 | 4 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
 | 5 | TF-IDF por dataset individual (no balanceado/balanceado) | `experiments/TF_IDF_single_classifier.py` |
-| 6 | BERT con balanceo de clases para experimentos individuales y cross-dataset | `experiments/BERT_balanced.py` |
+| 6 | BERT con balanceo de clases para experimentos individuales y cross-task | `experiments/BERT_balanced.py` |
 | 7 | Aumento sintético (0–80% datos reales) | `data_augmentation/generacion_sintetica_*.py` |
+| 8 | Análisis final cross-task | `experiments/cross_task_analysis.py` |
 
 ### Marcas CHAT como tokens especiales
 
@@ -108,6 +109,28 @@ La generación se condiciona con diagnóstico, edad, género, MMSE y ejemplos re
 ```
 
 Modelos disponibles: **Gemini 2.5 Flash** (API) y **Mistral Small 3.2** (Ollama en HPC).
+
+### Análisis cross-task
+
+El script `experiments/cross_task_analysis.py` analiza los resultados del experimento cross-task final. Este experimento entrena BERT balanceado con Pitt completo, mapeando `HC -> NoDisease` y `MCI/Dementia -> Disease`, y evalúa el mismo modelo en WLS y Taukadial. Además compara contra un baseline trivial `DummyClassifier(strategy="most_frequent")`.
+
+Ejemplo:
+
+```bash
+python experiments/cross_task_analysis.py \
+  --results-dir /mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_synthetic_analysis \
+  --output-dir /mnt/beegfs/groups/irgroup/sara_tfg/results/cross_task_analysis
+```
+
+Análisis generados:
+
+- Tabla resumen BERT vs baseline mayoritario.
+- Comparativa de `Accuracy`, `Macro-F1`, `Disease_recall` y `NoDisease_recall`.
+- Gráfica específica de recall de `Disease`.
+- Matrices de confusión de BERT y baseline para WLS y Taukadial.
+- Tipos de error (`TP_Disease`, `FN_Disease`, `FP_Disease`, `TN_NoDisease`).
+- Distribución de confianza para aciertos y errores de BERT.
+- Resumen en `summary.md`.
 
 ---
 

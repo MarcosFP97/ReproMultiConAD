@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=balancedBERT_cross_EN
+#SBATCH --job-name=balancedBERT_cross_task_EN
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -18,15 +18,8 @@ export LANG=C.UTF-8
 PYTHON_SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_balanced.py"
 
 python -u "$PYTHON_SCRIPT" \
-  --mode individual \
+  --mode cross_task \
   --train-dataset pitt \
   --task binary \
-  --binary-task hc_dementia \
-  --cross-test-datasets wls
-
-python -u "$PYTHON_SCRIPT" \
-  --mode individual \
-  --train-dataset pitt \
-  --task binary \
-  --binary-task hc_mci \
-  --cross-test-datasets taukadial
+  --binary-task disease_status \
+  --cross-test-datasets wls taukadial
