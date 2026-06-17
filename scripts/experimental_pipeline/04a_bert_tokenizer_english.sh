@@ -8,8 +8,6 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda activate sara_tfg
 

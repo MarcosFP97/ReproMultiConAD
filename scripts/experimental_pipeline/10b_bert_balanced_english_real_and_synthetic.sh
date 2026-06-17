@@ -10,7 +10,6 @@
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/BERT/%x_%j.log
 
 source ~/.bashrc
-conda init bash
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8

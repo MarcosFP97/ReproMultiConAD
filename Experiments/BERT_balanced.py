@@ -656,7 +656,9 @@ def main():
         greater_is_better=True,
         save_total_limit=1,
         logging_dir='./logs',
-        logging_steps=10,
+        logging_strategy="epoch",
+        disable_tqdm=True,
+        report_to="none",
     )
 
     trainer = CustomTrainer(

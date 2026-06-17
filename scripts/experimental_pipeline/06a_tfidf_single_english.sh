@@ -11,7 +11,6 @@
 set -euo pipefail
 
 source ~/.bashrc
-conda init bash
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
@@ -19,9 +18,15 @@ export LANG=C.UTF-8
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_classifier.py"
 
 for dataset in pitt delaware lu taukadial vas wls; do
-    echo "=== Dataset: $dataset | unbalanced ==="
-    python "$SCRIPT_PATH" --dataset "$dataset"
+    echo "=== Dataset: $dataset | binary | unbalanced ==="
+    python "$SCRIPT_PATH" --dataset "$dataset" --task binary
 
-    echo "=== Dataset: $dataset | balanced ==="
-    python "$SCRIPT_PATH" --dataset "$dataset" --balanced
+    echo "=== Dataset: $dataset | binary | balanced ==="
+    python "$SCRIPT_PATH" --dataset "$dataset" --task binary --balanced
+
+    echo "=== Dataset: $dataset | multiclass | unbalanced ==="
+    python "$SCRIPT_PATH" --dataset "$dataset" --task multiclass
+
+    echo "=== Dataset: $dataset | multiclass | balanced ==="
+    python "$SCRIPT_PATH" --dataset "$dataset" --task multiclass --balanced
 done

@@ -303,7 +303,7 @@ if __name__ == "__main__":
         Moca_counts = count_Moca(jsonl_path)
         age_counts = count_age(jsonl_path)
         dataset_counts = count_dataset_field(jsonl_path)
-        task_counts = count_tasks(jsonl_path, unique_patients=False)  # o False si quieres por transcripción
+        task_counts = count_tasks(jsonl_path, unique_patients=False)  # o False si queremos por transcripción
         dataset_name = os.path.splitext(os.path.basename(jsonl_path))[0]
 
         print(f"\nCounts for dataset: {dataset_name}")

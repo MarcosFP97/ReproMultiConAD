@@ -17,6 +17,14 @@ TEXT_FIELD = "Text_interviewer_participant"
 # Campos a eliminar (si existen)
 DROP_FIELDS = ["Text_participant", "Text_interviewer"]
 
+# Corpus excluidos del análisis de marcadores por carecer de anotación CHAT válida:
+# - TAUKADIAL: transcripción automática (ASR), 0 marcadores en 506 transcripciones
+# - PerLA: solo clase Dementia, sin pausas ni reformulaciones anotadas
+EXCLUDE_DATASETS: dict[str, set[str]] = {
+    "en":  {"TAUKADIAL"},
+    "spa": {"PerLA"},
+}
+
 # Si un marcador NO está activo en el modo elegido:
 # - True: lo elimina (recomendado para aislar señal)
 # - False: lo deja como estaba
@@ -93,17 +101,25 @@ def write_jsonl(path: str, rows: Iterable[Dict[str, Any]]) -> None:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def preprocess_file(input_path: str, output_path: str, mode: str) -> None:
+def preprocess_file(input_path: str, output_path: str, mode: str, language: str) -> None:
+    excluded = EXCLUDE_DATASETS.get(language, set())
+
     def _rows():
+        skipped = 0
         for obj in iter_jsonl(input_path):
-            # 1) sobrescribe el texto principal ya preprocesado
+            if obj.get("Dataset") in excluded:
+                skipped += 1
+                continue
+
             obj[TEXT_FIELD] = preprocess_text(obj.get(TEXT_FIELD, ""), mode=mode)
 
-            # 2) elimina campos que no quieres
             for k in DROP_FIELDS:
                 obj.pop(k, None)
 
             yield obj
+
+        if skipped:
+            print(f"  Excluidos por corpus sin anotación CHAT: {skipped} registros ({excluded})")
 
     write_jsonl(output_path, _rows())
 
@@ -169,8 +185,8 @@ def main():
     print("Drop inactive markers:", DROP_INACTIVE_MARKERS)
     print("Tokens:", PAUSE_TOKEN, REP_TOKEN, REF_TOKEN)
 
-    preprocess_file(train_in, train_out, mode=mode)
-    preprocess_file(test_in, test_out, mode=mode)
+    preprocess_file(train_in, train_out, mode=mode, language=input_prefix)
+    preprocess_file(test_in, test_out, mode=mode, language=input_prefix)
 
     print("Done")
 
