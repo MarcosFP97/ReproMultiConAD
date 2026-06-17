@@ -9,21 +9,21 @@
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/%x_%A_%a.log
 #SBATCH --array=0-7
 
-set -euo pipefail
+set -eo pipefail
 
 source ~/.bashrc
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-cd /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition
+SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/preprocessing_text/preprocess_language_features.py"
 
 languages=(en en en en spa spa spa spa)
 modes=(pause rep ref all pause rep ref all)
 
 i="${SLURM_ARRAY_TASK_ID:-0}"
 
-python -m preprocessing_text.preprocess_language_features \
+python "$SCRIPT" \
   --language "${languages[$i]}" \
   --mode "${modes[$i]}" \
   --data-root /mnt/beegfs/groups/irgroup/sara_tfg/jsonl
