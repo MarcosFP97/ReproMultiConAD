@@ -30,6 +30,14 @@ TASK_LABELS = {
     "multiclass": ["Dementia", "HC", "MCI"],
 }
 
+# Regex para detectar el token CHAT relevante según el modo de marcadores
+MARKER_REGEX = {
+    "pause": r"\[PAUSE\]",
+    "rep":   r"\[REP\]",
+    "ref":   r"\[REF\]",
+    "all":   r"\[PAUSE\]|\[REP\]|\[REF\]",
+}
+
 DEFAULT_ROOT = Path("/mnt/beegfs/groups/irgroup/sara_tfg")
 DEFAULT_MODEL_ROOT = DEFAULT_ROOT / "ConvoCognition" / "Experiments" / "BERT_Models"
 DEFAULT_TEST_ROOT = DEFAULT_ROOT / "jsonl" / "markers_collections"
@@ -170,9 +178,10 @@ def _sample_part(df: pd.DataFrame, take: int, seed: int) -> pd.DataFrame:
     return df.sample(n=take, random_state=seed)
 
 
-def select_samples(df: pd.DataFrame, language: str, sample_size: int, seed: int) -> pd.DataFrame:
+def select_samples(df: pd.DataFrame, language: str, sample_size: int, seed: int, marker: str = "all") -> pd.DataFrame:
     work = df.copy()
-    work["has_chat_marker"] = work[TEXT_COL].str.contains(r"\[[^\]]+\]", regex=True, na=False)
+    regex = MARKER_REGEX.get(marker, MARKER_REGEX["all"])
+    work["has_chat_marker"] = work[TEXT_COL].str.contains(regex, regex=True, na=False)
     lang = language.strip().lower()
 
     selected_parts: list[pd.DataFrame] = []
@@ -436,7 +445,7 @@ def main() -> int:
 
     df = filter_by_task(df, args.task)
     df = split_for_slurm(df, args.slurm_task_id, args.slurm_task_count, args.seed)
-    df_samples = select_samples(df, args.language, args.sample_size, args.seed)
+    df_samples = select_samples(df, args.language, args.sample_size, args.seed, marker=args.marker)
     if df_samples.empty:
         logging.error("No hay muestras disponibles para calcular SHAP.")
         return 1
