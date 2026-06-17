@@ -1,9 +1,8 @@
 """
-Clasificador TF-IDF binario por dataset individual (pipeline individual).
+Clasificador TF-IDF por dataset individual (pipeline individual).
 
-Para cada dataset entrena HC vs Dementia o HC vs MCI (Delaware y Taukadial),
-con GridSearchCV sobre Decision Tree, Random Forest, Naive Bayes, SVM y Logistic Regression.
-Incluye visualizaciones 2D/3D de la frontera SVM proyectada con TruncatedSVD.
+Binario: HC vs Enfermo (MCI + Dementia agrupados), consistente con el experimento cross-dataset.
+Multiclase: HC / MCI / Dementia (solo para datasets con las 3 clases: Pitt e Ivanova).
 """
 import os
 import sys
@@ -52,18 +51,14 @@ if not os.path.exists(train_path) or not os.path.exists(test_path):
 train_df = pd.read_json(train_path, lines=True)
 test_df  = pd.read_json(test_path, lines=True)
 
-mci_hc_datasets = {"delaware", "taukadial"}
-
 train_df["Diagnosis"] = train_df["Diagnosis"].replace("AD", "Dementia")
 test_df["Diagnosis"]  = test_df["Diagnosis"].replace("AD", "Dementia")
 
 if TASK == "binary":
-    if DATASET_LOWER in mci_hc_datasets:
-        keep = {"HC", "MCI"}
-        positive_label = "MCI"
-    else:
-        keep = {"HC", "Dementia"}
-        positive_label = "Dementia"
+    train_df["Diagnosis"] = train_df["Diagnosis"].replace({"MCI": "Enfermo", "Dementia": "Enfermo"})
+    test_df["Diagnosis"]  = test_df["Diagnosis"].replace({"MCI": "Enfermo", "Dementia": "Enfermo"})
+    keep = {"HC", "Enfermo"}
+    positive_label = "Enfermo"
 else:
     keep = {"HC", "MCI", "Dementia"}
     positive_label = "Dementia"  # no usado en multiclass

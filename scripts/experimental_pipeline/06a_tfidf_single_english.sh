@@ -21,11 +21,11 @@ for dataset in pitt delaware lu taukadial vas wls; do
 
     echo "=== Dataset: $dataset | binary | balanced ==="
     python "$SCRIPT_PATH" --dataset "$dataset" --task binary --balanced
-
-    echo "=== Dataset: $dataset | multiclass | unbalanced ==="
-    python "$SCRIPT_PATH" --dataset "$dataset" --task multiclass
-
-    echo "=== Dataset: $dataset | multiclass | balanced ==="
-    python "$SCRIPT_PATH" --dataset "$dataset" --task multiclass --balanced
 done
+
+echo "=== Dataset: pitt | multiclass | unbalanced ==="
+python "$SCRIPT_PATH" --dataset pitt --task multiclass
+
+echo "=== Dataset: pitt | multiclass | balanced ==="
+python "$SCRIPT_PATH" --dataset pitt --task multiclass --balanced
 
