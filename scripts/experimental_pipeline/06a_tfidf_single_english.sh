@@ -16,6 +16,7 @@ export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_classifier.py"
+VIZ_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_viz.py"
 
 for dataset in pitt delaware lu taukadial vas wls; do
     echo "=== Dataset: $dataset | binary | unbalanced ==="
@@ -30,3 +31,6 @@ for dataset in pitt delaware lu taukadial vas wls; do
     echo "=== Dataset: $dataset | multiclass | balanced ==="
     python "$SCRIPT_PATH" --dataset "$dataset" --task multiclass --balanced
 done
+
+echo "=== Generando visualizaciones ==="
+python "$VIZ_PATH"

@@ -21,9 +21,6 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.decomposition import TruncatedSVD
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
 
 import argparse
 
@@ -89,119 +86,6 @@ def _get_confidence(estimator, X):
         return np.abs(dec) if dec.ndim == 1 else (np.partition(dec, -2, axis=1)[:, -1] - np.partition(dec, -2, axis=1)[:, -2])
     return None
 
-def plot_svm_frontier_2d(X_train_tfidf, y_train, X_test_tfidf, y_test, best_params, dataset_name, positive_label, out_path=None, random_state=42):
-    """
-    Visualiza una frontera SVM en 2D:
-    - Proyecta TF-IDF a 2D con TruncatedSVD
-    - Escala (StandardScaler)
-    - Entrena SVM con best_params (kernel/C)
-    - Dibuja frontera (nivel 0) y márgenes (niveles ±1)
-    """
-    svd = TruncatedSVD(n_components=2, random_state=random_state)
-    Xtr_2d = svd.fit_transform(X_train_tfidf)
-    Xte_2d = svd.transform(X_test_tfidf)
-
-    # SVC se beneficia del escalado porque opera en espacio euclídeo, no en el TF-IDF original.
-    svm_kwargs = {
-        "kernel": best_params.get("kernel", "linear"),
-        "C": best_params.get("C", 1.0),
-    }
-
-    clf2d = Pipeline([
-        ("scaler", StandardScaler()),
-        ("svm", SVC(**svm_kwargs)),
-    ])
-    clf2d.fit(Xtr_2d, y_train)
-
-    x_min, x_max = Xtr_2d[:, 0].min() - 0.8, Xtr_2d[:, 0].max() + 0.8
-    y_min, y_max = Xtr_2d[:, 1].min() - 0.8, Xtr_2d[:, 1].max() + 0.8
-    xx, yy = np.meshgrid(
-        np.linspace(x_min, x_max, 500),
-        np.linspace(y_min, y_max, 500),
-    )
-    grid = np.c_[xx.ravel(), yy.ravel()]
-    Z = clf2d.decision_function(grid).reshape(xx.shape)
-
-    plt.figure(figsize=(8, 6))
-    # frontera 0 y márgenes ±1
-    plt.contour(xx, yy, Z, levels=[-1, 0, 1], linestyles=["--", "-", "--"])
-
-    classes = ["HC", positive_label]
-    markers = {"HC": "o", positive_label: "s"}
-
-    for cls in classes:
-        tr_idx = (y_train == cls)
-        te_idx = (y_test == cls)
-
-        plt.scatter(Xtr_2d[tr_idx, 0], Xtr_2d[tr_idx, 1],
-                    marker=markers[cls], alpha=0.30, label=f"train {cls}")
-        plt.scatter(Xte_2d[te_idx, 0], Xte_2d[te_idx, 1],
-                    marker=markers[cls], alpha=0.95, label=f"test {cls}")
-
-    plt.title(f"{dataset_name} | HC vs {positive_label} | SVM({svm_kwargs['kernel']}, C={svm_kwargs['C']}) en SVD-2D")
-    plt.xlabel("SVD comp. 1")
-    plt.ylabel("SVD comp. 2")
-    plt.legend()
-    plt.tight_layout()
-
-    if out_path:
-        plt.savefig(out_path, dpi=200)
-        plt.close()
-    else:
-        plt.show()
-
-def plot_svm_svd3d_scatter(X_train_tfidf, y_train, X_test_tfidf, y_test,
-                          best_params, dataset_name, positive_label,
-                          out_path=None, random_state=42):
-    """
-    Visualiza HC vs positive_label en 3D:
-    - Proyecta TF-IDF a 3D con TruncatedSVD
-    - Escala (StandardScaler)
-    - (Opcional) entrena SVM 3D solo para coherencia, pero NO dibuja hiperplano
-    - Dibuja scatter 3D train/test por clase
-    """
-    svd = TruncatedSVD(n_components=3, random_state=random_state)
-    Xtr_3d = svd.fit_transform(X_train_tfidf)
-    Xte_3d = svd.transform(X_test_tfidf)
-
-    # El SVM 3D no se dibuja, pero se entrena para mantener coherencia con los parámetros del grid.
-    svm_kwargs = {
-        "kernel": best_params.get("kernel", "linear"),
-        "C": best_params.get("C", 1.0),
-    }
-    clf3d = Pipeline([
-        ("scaler", StandardScaler()),
-        ("svm", SVC(**svm_kwargs)),
-    ])
-    clf3d.fit(Xtr_3d, y_train)
-
-    fig = plt.figure(figsize=(9, 7))
-    ax = fig.add_subplot(111, projection="3d")
-
-    classes = ["HC", positive_label]
-    markers = {"HC": "o", positive_label: "s"}
-
-    for cls in classes:
-        tr_idx = (y_train == cls)
-        te_idx = (y_test == cls)
-
-        ax.scatter(Xtr_3d[tr_idx, 0], Xtr_3d[tr_idx, 1], Xtr_3d[tr_idx, 2],
-                   marker=markers[cls], alpha=0.25, label=f"train {cls}")
-        ax.scatter(Xte_3d[te_idx, 0], Xte_3d[te_idx, 1], Xte_3d[te_idx, 2],
-                   marker=markers[cls], alpha=0.95, label=f"test {cls}")
-
-    ax.set_title(f"{dataset_name} | HC vs {positive_label} | SVM({svm_kwargs['kernel']}, C={svm_kwargs['C']}) en SVD-3D")
-    ax.set_xlabel("SVD comp. 1")
-    ax.set_ylabel("SVD comp. 2")
-    ax.set_zlabel("SVD comp. 3")
-    ax.legend()
-    plt.tight_layout()
-
-    if out_path:
-        plt.savefig(out_path, dpi=200)
-        plt.close()
-    else:
-        plt.show()
 
 def run_tfidf_binary(train_df, test_df, random_state=42):
     X_train_text = train_df[LABEL].astype(str)
@@ -236,40 +120,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
 
         best_model = grid_search.best_estimator_
         conf = _get_confidence(best_model, X_test)
-        
-        if name == "SVM":
-            fig_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/figs/"
-            os.makedirs(fig_dir, exist_ok=True)
-
-            fig_path = os.path.join(
-                fig_dir,
-                f"SVM_{balance_tag}_frontier_{DATASET}_HC_vs_{positive_label}.png"
-            )
-
-            plot_svm_frontier_2d(
-                X_train, y_train.values,
-                X_test,  y_test.values,
-                best_params=grid_search.best_params_,
-                dataset_name=DATASET,
-                positive_label=positive_label,
-                out_path=fig_path,
-                random_state=random_state
-            )
-            print(f"[SVM] Figura guardada en: {fig_path}")
-
-            fig_path_3d = os.path.join(fig_dir, f"SVM_{balance_tag}_scatter3D_{DATASET}_HC_vs_{positive_label}.png")
-
-            plot_svm_svd3d_scatter(
-                X_train, y_train.values,
-                X_test,  y_test.values,
-                best_params=grid_search.best_params_,
-                dataset_name=DATASET,
-                positive_label=positive_label,
-                out_path=fig_path_3d,
-                random_state=random_state
-            )
-            print(f"[SVM] Figura 3D guardada en: {fig_path_3d}")
-
 
         eval_df = test_df.copy()
         eval_df["_text"] = X_test_text.values
