@@ -97,7 +97,7 @@ def plot_heatmap(df: pd.DataFrame, task: str, figs_dir: Path, lang_label: str) -
         linewidths=0.5,
         ax=ax,
     )
-    title_task = "Binario (HC vs Dementia/MCI)" if task == "binary" else "Multiclase (HC / MCI / Dementia)"
+    title_task = "Binario (HC vs Enfermo)" if task == "binary" else "Multiclase (HC / MCI / Dementia)"
     ax.set_title(f"F1 macro — TF-IDF individual ({lang_label})\n{title_task}", fontsize=11, pad=10)
     ax.set_xlabel("Clasificador", fontsize=10)
     ax.set_ylabel("Dataset", fontsize=10)
