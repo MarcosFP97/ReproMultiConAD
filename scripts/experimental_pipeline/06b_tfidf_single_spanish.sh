@@ -14,7 +14,6 @@ export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
 SCRIPT_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_classifier.py"
-VIZ_PATH="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/TF_IDF_single_viz.py"
 
 echo "=== Dataset: ivanova | binary | unbalanced ==="
 python "$SCRIPT_PATH" --dataset ivanova --task binary
@@ -28,5 +27,3 @@ python "$SCRIPT_PATH" --dataset ivanova --task multiclass
 echo "=== Dataset: ivanova | multiclass | balanced ==="
 python "$SCRIPT_PATH" --dataset ivanova --task multiclass --balanced
 
-echo "=== Generando visualizaciones ==="
-python "$VIZ_PATH"
