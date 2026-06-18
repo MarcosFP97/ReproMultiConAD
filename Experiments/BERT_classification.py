@@ -29,7 +29,14 @@ args = parser.parse_args()
 language = args.language
 task = args.task
 
-MODEL_NAME = "bert-base-uncased"
+MODEL_BY_LANGUAGE = {
+    "en": "bert-base-uncased",
+    "spa": "dccuchile/bert-base-spanish-wwm-cased",
+}
+if language not in MODEL_BY_LANGUAGE:
+    raise ValueError(f"Idioma no soportado: {language}. Usa 'en' o 'spa'.")
+
+MODEL_NAME = MODEL_BY_LANGUAGE[language]
 TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_{language}_e5.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_{language}_e5.jsonl"
 OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_len256"

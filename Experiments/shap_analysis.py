@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--marker", type=str, required=True)
     parser.add_argument("--language", type=str, required=True)
     parser.add_argument("--task", type=str, required=True, choices=["binary", "multiclass"])
-    parser.add_argument("--sample-size", type=int, default=10, help="Numero de ejemplos para SHAP.")
+    parser.add_argument("--sample-size", type=int, default=30, help="Numero de ejemplos para SHAP.")
     parser.add_argument("--seed", type=int, default=42, help="Semilla para muestreo reproducible.")
     parser.add_argument("--model-root", type=Path, default=DEFAULT_MODEL_ROOT)
     parser.add_argument("--test-root", type=Path, default=DEFAULT_TEST_ROOT)
@@ -182,48 +182,57 @@ def select_samples(df: pd.DataFrame, language: str, sample_size: int, seed: int,
     work = df.copy()
     regex = MARKER_REGEX.get(marker, MARKER_REGEX["all"])
     work["has_chat_marker"] = work[TEXT_COL].str.contains(regex, regex=True, na=False)
-    lang = language.strip().lower()
+    labels = [label for label in TASK_LABELS["multiclass"] if label in set(work[LABEL_COL])]
+    if not labels:
+        return work.head(0).copy()
 
+    target_size = min(sample_size, len(work))
+    base_quota, remainder = divmod(target_size, len(labels))
     selected_parts: list[pd.DataFrame] = []
     selected_index: set[int] = set()
 
-    def consume_group(name: str, group: pd.DataFrame, seed_offset: int) -> None:
-        remaining = sample_size - sum(len(p) for p in selected_parts)
-        if remaining <= 0:
-            return
-        group = group[~group.index.isin(selected_index)]
-        taken = _sample_part(group, remaining, seed + seed_offset)
-        if not taken.empty:
-            selected_parts.append(taken)
-            selected_index.update(taken.index.to_list())
-            logging.info("Seleccion '%s': %d muestras.", name, len(taken))
+    # Reparte el presupuesto entre clases. Dentro de cada clase prioriza
+    # transcripciones que contienen el marcador analizado.
+    for label_idx, label in enumerate(labels):
+        quota = base_quota + (1 if label_idx < remainder else 0)
+        label_rows = work[work[LABEL_COL] == label]
+        with_marker = label_rows[label_rows["has_chat_marker"]]
+        without_marker = label_rows[~label_rows["has_chat_marker"]]
 
-    if lang == "spa" and "Dataset" in work.columns:
-        dataset_norm = work["Dataset"].fillna("").astype(str).str.strip().str.casefold()
-        ivanova_mask = dataset_norm.eq("ivanova")
-        marker_mask = work["has_chat_marker"]
+        marker_take = min(quota, len(with_marker))
+        selected_marker = _sample_part(with_marker, marker_take, seed + label_idx * 10)
+        remaining = quota - len(selected_marker)
+        selected_plain = _sample_part(without_marker, remaining, seed + label_idx * 10 + 1)
 
-        consume_group("Ivanova + CHAT", work[ivanova_mask & marker_mask], 0)
-        consume_group("CHAT resto datasets", work[~ivanova_mask & marker_mask], 1)
-        consume_group("Ivanova sin CHAT", work[ivanova_mask & ~marker_mask], 2)
-        consume_group("Resto", work[~ivanova_mask & ~marker_mask], 3)
-    else:
-        marker_mask = work["has_chat_marker"]
-        consume_group("CHAT", work[marker_mask], 0)
-        consume_group("Resto", work[~marker_mask], 1)
-
-    if selected_parts:
-        result = pd.concat(selected_parts, axis=0).copy()
-    else:
-        result = work.head(0).copy()
-
-    if len(result) < sample_size:
-        logging.warning(
-            "No hay suficientes filas para completar %d muestras. Seleccionadas: %d.",
-            sample_size,
-            len(result),
+        selected = pd.concat([selected_marker, selected_plain], axis=0)
+        if not selected.empty:
+            selected_parts.append(selected)
+            selected_index.update(selected.index.to_list())
+        logging.info(
+            "Seleccion clase '%s': %d/%d muestras (%d con marcador).",
+            label,
+            len(selected),
+            quota,
+            len(selected_marker),
         )
-    return result.head(sample_size)
+
+    result = pd.concat(selected_parts, axis=0) if selected_parts else work.head(0).copy()
+
+    # Completa el presupuesto si alguna clase no tenia suficientes ejemplos.
+    remaining = target_size - len(result)
+    if remaining > 0:
+        pool = work[~work.index.isin(selected_index)].copy()
+        marker_pool = pool[pool["has_chat_marker"]]
+        extra_marker = _sample_part(marker_pool, min(remaining, len(marker_pool)), seed + 100)
+        remaining -= len(extra_marker)
+        plain_pool = pool[
+            ~pool.index.isin(extra_marker.index) & ~pool["has_chat_marker"]
+        ]
+        extra_plain = _sample_part(plain_pool, remaining, seed + 101)
+        extra = pd.concat([extra_marker, extra_plain], axis=0)
+        result = pd.concat([result, extra], axis=0)
+
+    return result.sample(frac=1, random_state=seed).head(target_size)
 
 
 def truncate_with_offset_mapping(text: str, tokenizer: Any, max_len: int = MAX_LEN) -> str:

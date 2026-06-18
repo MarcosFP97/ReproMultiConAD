@@ -31,7 +31,14 @@ language = args.language
 task = args.task
 mode = args.mode
 
-MODEL_NAME = "bert-base-uncased"
+MODEL_BY_LANGUAGE = {
+    "en": "bert-base-uncased",
+    "spa": "dccuchile/bert-base-spanish-wwm-cased",
+}
+if language not in MODEL_BY_LANGUAGE:
+    raise ValueError(f"Idioma no soportado: {language}. Usa 'en' o 'spa'.")
+
+MODEL_NAME = MODEL_BY_LANGUAGE[language]
 TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/train_{language}_e5_markers_{mode}.jsonl"
 TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/test_{language}_e5_markers_{mode}.jsonl"
 OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_{mode}_len256"
@@ -507,10 +514,10 @@ def main():
     )
 
     n_total = len(pred_df)
-    n_wrong = int((~pred_df[“correct”]).sum())
-    print(f”\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)”)
+    n_wrong = int((~pred_df["correct"]).sum())
+    print(f"\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)")
 
-    wrong_df = pred_df[~pred_df[“correct”]].sort_values(“confidence”, ascending=False)
+    wrong_df = pred_df[~pred_df["correct"]].sort_values("confidence", ascending=False)
 
     print("\n[ERRORS] Top 20 most confident WRONG examples:")
     for i, row in wrong_df.head(20).iterrows():
