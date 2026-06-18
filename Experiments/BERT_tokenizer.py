@@ -507,10 +507,10 @@ def main():
     )
 
     n_total = len(pred_df)
-    n_wrong = int((~pred_df[“correct”]).sum())
-    print(f”\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)”)
+    n_wrong = int((~pred_df["correct"]).sum())
+    print(f"\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)")
 
-    wrong_df = pred_df[~pred_df[“correct”]].sort_values(“confidence”, ascending=False)
+    wrong_df = pred_df[~pred_df["correct"]].sort_values("confidence", ascending=False)
 
     print("\n[ERRORS] Top 20 most confident WRONG examples:")
     for i, row in wrong_df.head(20).iterrows():
@@ -531,5 +531,4 @@ def main():
     print("\n========== DONE ==========")
 
 if __name__ == "__main__":
-
     main()
