@@ -45,6 +45,7 @@ echo "------------------------------------------------------------"
 python /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/shap_analysis.py \
     --language "$current_lang" \
     --task "$current_task" \
-    --marker "$current_marker"
+    --marker "$current_marker" \
+    --sample-size 30
 
 echo "Finalizado."
