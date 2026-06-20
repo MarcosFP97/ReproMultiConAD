@@ -14,7 +14,7 @@ conda activate sara_tfg
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
-SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/preprocessing_text/preprocess_language_features.py"
+SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Preprocessing_text/preprocess_language_features.py"
 
 languages=(en en en en en spa spa spa spa spa)
 modes=(none pause rep ref all none pause rep ref all)

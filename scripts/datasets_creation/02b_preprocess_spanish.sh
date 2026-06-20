@@ -14,4 +14,4 @@ export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 
 cd /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition
-python -m preprocessing_text.preprocess_global_spanish
+python -m Preprocessing_text.preprocess_global_spanish
