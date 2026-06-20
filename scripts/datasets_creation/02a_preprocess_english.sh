@@ -8,8 +8,6 @@
 #SBATCH --qos=regular
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/%x_%j.log
 
-set -euo pipefail
-
 source ~/.bashrc
 conda activate sara_tfg
 export LC_ALL=C.UTF-8
