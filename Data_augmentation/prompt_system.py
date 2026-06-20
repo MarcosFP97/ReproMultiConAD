@@ -156,13 +156,34 @@ def validate_no_other_speakers(texto: str | None, _: PromptSpec) -> bool:
     return True
 
 
+def validate_no_speaker_labels(texto: str | None, _: PromptSpec) -> bool:
+    """Rechaza etiquetas de hablante (INV:/PAR:/SpeakerX:): el corpus real usa solo ' : '."""
+    if not texto:
+        return False
+    return re.search(r"\b(INV|PAR|SpeakerA|SpeakerB)\s*:", texto) is None
+
+
+def validate_no_code_artifacts(texto: str | None, _: PromptSpec) -> bool:
+    """Rechaza markdown/code fences y artefactos de notebook/código."""
+    if not texto or not texto.strip():
+        return False
+    if "```" in texto:
+        return False
+    if re.search(r"\.ipynb\b|%matplotlib\b|\bimport\b|\bdef\b|\bclass\b|\btensorflow\b", texto):
+        return False
+    if re.search(r"^\+{3,}", texto, flags=re.MULTILINE):
+        return False
+    return True
+
+
 
 PROMPT_REGISTRY: dict[str, PromptSpec] = {
     # PITT
     "pitt": PromptSpec(
         system_template=(
-            "You generate synthetic Pitt Corpus dialogues in CHAT format. "
-            "Return only plain dialogue lines. Every line must start exactly with INV: or PAR:."
+            "You generate synthetic Pitt Corpus Cookie Theft transcripts in CLAN/CHAT .cha output style. "
+            "Write ONE continuous lowercase line, separating every turn with a space-colon-space ' : ' and putting spaces around punctuation ( . and ? ). "
+            "Return only the transcript line, nothing else."
         ),
         user_template="""
             Use these neighbors as style anchors:
@@ -178,16 +199,18 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Rules:
             {rules_block}
             """.strip(),
-        roles_required=("INV:", "PAR:"),
+        roles_required=(),
         dataset_rules=(
-            "Include both speakers using the exact prefixes INV: and PAR: respectively.",
-            "Do not use markdown, headings, explanations, bullets, quotes, or speaker prefixes other than INV: and PAR:.",
-            "MIMIC the broken speech patterns found in the neighbors (do not correct grammar).",
-            'YOU MUST INCLUDE CHAT CODES if the neighbors have them. Examples :\n- Pauses: (.) or (..)\n- Repetitions: [/] (e.g., "the [/] the cookie")\n- Revisions: [//] (e.g., "girl [//] boy")\n- Fillers: &-uh, &-um',
-            "Keep Cookie Theft context."
+            "Imitate the surface format of the neighbors: lowercase, turns separated by ' : ', spaces around punctuation ( . and ? ).",
+            "Reproduce the SAME CHAT markers the neighbors use, with the same notation: pauses (.) (..) (...), repetitions 'word [/] word', revisions 'word [//] word', fillers &-uh &-um, overlaps +<, interruptions +/. and +/?, exclamations [+ exc], and www for unintelligible interviewer speech.",
+            "Calibrate disfluency density to the cognitive level: HC/MMSE>=25 mostly fluent with few markers; MCI/MMSE 20-24 moderate hesitations; Dementia/MMSE<20 frequent pauses, repetitions, word-finding errors and broken syntax.",
+            "MIMIC the broken speech patterns of the matching neighbors; do NOT correct grammar.",
+            "Keep the Cookie Theft scene (boy, stool, cookie jar, mother, sink overflowing, dishes).",
+            "Match the length of the neighbors (roughly 120-220 words).",
+            "No markdown, headings, explanations, bullets, quotes or code.",
         ),
         neighbor_header_template="--- Neighbor {i} | Diagnosis: {Diagnosis} | Age: {Age} | MMSE: {MMSE} | Gender: {Gender} ---",
-        validators=(validate_chat_for_spec, validate_required_roles),
+        validators=(validate_no_code_artifacts, validate_no_speaker_labels),
         basic_user_template="""
             Based on these similar transcripts:
 
@@ -216,18 +239,18 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             {rules_block}
         """.strip(),
         zero_shot_rules=(
-            "Include both speakers using exact line prefixes INV: and PAR:.",
-            "Start with an INV: interviewer prompt, then generate PAR: participant responses.",
-            "Return only the dialogue. No explanation, no markdown, no bullets, no title.",
-            "MIMIC the cognitive decline",
-            'YOU MUST INCLUDE CHAT CODES to reflect the cognition: Pauses (.) or (..), Repetitions [/], Revisions [//], and Fillers (&-uh, &-um).',
-            "Keep the Cookie Theft picture context",
+            "Write ONE continuous lowercase line, separating turns with ' : ' and putting spaces around punctuation ( . and ? ).",
+            "Start with a short interviewer turn (e.g. ': all that you see going on in the picture ?') and then the participant's description.",
+            "Include CHAT markers to reflect cognition: pauses (.) (..) (...), repetitions 'word [/] word', revisions 'word [//] word', fillers &-uh &-um, overlaps +<, interruptions +/. and +/?, exclamations [+ exc].",
+            "Calibrate disfluency density to the cognitive level: HC/MMSE>=25 mostly fluent; MCI/MMSE 20-24 moderate hesitations; Dementia/MMSE<20 frequent pauses, repetitions, word-finding errors and broken syntax.",
+            "Keep the Cookie Theft scene (boy, stool, cookie jar, mother, sink overflowing, dishes); aim for roughly 120-200 words.",
+            "Return only the transcript. No explanation, no markdown, no bullets, no title, no code.",
         ),
         generation_options={
-            "temperature": 1.0,
+            "temperature": 0.8,
         },
         ollama_generation_options={
-            "max_output_tokens": 220,
+            "max_output_tokens": 320,
             "repeat_penalty": 1.15,
         },
         uses_cookie_theft_image=True,
@@ -235,8 +258,9 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
     # IVANOVA
     "ivanova": PromptSpec(
         system_template=(
-            "Generas transcripciones sintéticas en español para el dataset Ivanova. "
-            "Salida estricta: solo líneas del participante con prefijo exacto PAR:."
+            "Generas transcripciones sintéticas en español del dataset Ivanova: una lectura en voz alta del inicio del Quijote, imitando el formato de salida CHAT/.cha. "
+            "Escribe la transcripción separando los fragmentos con ' : ', conservando mayúscula inicial de frase y comas, como en una lectura real. "
+            "Devuelve solo la transcripción."
         ),
         user_template="""
             Usa estos vecinos como anclas de estilo y capacidad cognitiva de lectura:
@@ -250,34 +274,31 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Gender: {Gender}
 
             TAREA:
-            Lectura en español de las dos primeras frases de Don Quijote de Cervantes.
+            El paciente INTENTA leer en voz alta las dos primeras frases del Quijote, cometiendo errores reales de lectura según su nivel cognitivo (NO copiar literal).
 
-            PASAJE OBLIGATORIO (debe aparecer literal y exactamente una vez):
+            PASAJE DE REFERENCIA (es lo que el paciente trata de leer, no a transcribir tal cual):
             "{required_passage}"
 
             Rules:
             {rules_block}
             """.strip(),
-        roles_required=("PAR:",),
+        roles_required=(),
         dataset_rules=(
-            'Solo se permiten líneas de participante',
-            "No incluyas entrevistador ni otros speakers; no agregues prosa fuera de las líneas del transcript.",
+            "Imita el formato de los vecinos: fragmentos separados por ' : ', con mayúsculas iniciales de frase y comas.",
             "La salida debe estar en español.",
-            "El pasaje debe aparecer literal y en el mismo orden, exactamente una vez.",
-            "Modela el nivel cognitivo/fluidez según vecinos: mayor capacidad = lectura más fluida; menor capacidad = más vacilaciones, repeticiones, reparaciones, sustituciones, omisiones y reinicios.",
-            "No cambies el pasaje obligatorio; los errores solo pueden aparecer como disfluencias y marcas CHAT *alrededor* del pasaje, sin alterar su texto.",
-            "Imita el estilo de disfluencias de los vecinos si existe ((.), (..), [/], [//], &-eh, &-em, etc.) y evita inventar estilos ajenos salvo mínimo necesario.",
-            "FORMATO/CONTROL: produce entre 2 y 6 líneas y termina. No añadas líneas extra.",
-            "ANTI-LOOP: no repitas el pasaje ni vuelvas a recitarlo; no repitas secuencias largas (>8 palabras) del pasaje.",
-            "Prohibidos markdown/code fences, headings, listas, explicaciones y artefactos de notebook/código.",
+            "El paciente NO reproduce el pasaje literal: introduce errores reales de lectura escalados por gravedad (sustituciones de palabras, palabras partidas/repetidas como 'domin domingo', reinicios, omisiones, parafasias), tal como hacen los vecinos.",
+            "Usa SOLO la marca CHAT [/] para repeticiones (ej. 'de [/] de los'), como los vecinos. NO uses (.), (..), [//], &-eh ni &-em (no aparecen en este corpus); las demás disfluencias van escritas como palabras realmente mal leídas.",
+            "Calibra la cantidad de errores: MMSE alto (27-30)/HC = lectura casi correcta con algún tropiezo; MCI/MMSE 20-26 = vacilaciones y alguna sustitución; Demencia/MMSE<20 = lectura muy fragmentada, sustituciones frecuentes y pérdida de estructura.",
+            "Mantén el tema y el orden del pasaje (lugar de la Mancha, hidalgo, lanza, adarga, rocín, galgo, olla, vaca, carnero, salpicón, sábados, lentejas, viernes, palomino, domingos, hacienda).",
+            "Longitud parecida a los vecinos (aprox. 70-100 palabras). No recites el pasaje entero más de una vez.",
+            "Prohibidos markdown/code fences, encabezados, listas, explicaciones, acotaciones (*pausa*) y artefactos de notebook/código.",
         ),
 
         neighbor_header_template="--- Vecino {i} | Diagnostico: {Diagnosis} | Edad: {Age} | MMSE: {MMSE} | Genero: {Gender} ---",
         validators=(
-            validate_required_roles,
-            validate_only_par_lines,
+            validate_no_speaker_labels,
             validate_contains_passage_verbatim,
-            validate_no_other_speakers,
+            validate_no_code_artifacts,
         ),
         basic_user_template="""
             Usa estos vecinos como anclas de estilo:
@@ -291,10 +312,10 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Gender: {Gender}
 
             Salida estricta:
-            1. Solo líneas con prefijo exacto "PAR:".
-            2. Debe incluir este pasaje una vez:
+            1. Fragmentos separados por ' : ', con mayúsculas iniciales y comas, como una lectura real.
+            2. El paciente intenta leer este pasaje cometiendo errores reales según su nivel (NO copiar literal):
             "{required_passage}"
-            3. Mimetiza la fluidez/disfluencia según los vecinos.
+            3. Mimetiza la fluidez/disfluencia según los vecinos (solo marca [/] para repeticiones).
             """.strip(),
         zero_shot_user_template="""
             PACIENTE OBJETIVO:
@@ -305,30 +326,28 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
             Gender: {Gender}
 
             TAREA:
-            Lectura en español de las dos primeras frases de Don Quijote de Cervantes.
+            El paciente intenta leer en voz alta las dos primeras frases del Quijote.
 
-            PASAJE OBLIGATORIO:
+            PASAJE DE REFERENCIA (lo que trata de leer, NO a copiar literal):
             "{required_passage}"
 
             OBJETIVO DE LA SIMULACIÓN:
-            Genera la transcripción exacta de CÓMO leería este paciente el pasaje en TIEMPO REAL. 
-            Debes tropezar, dudar y equivocarte MIENTRAS lees las palabras, adaptando la cantidad de errores al nivel cognitivo (Diagnosis y MMSE).
+            Genera la transcripción de CÓMO leería este paciente el pasaje en TIEMPO REAL.
+            Debes tropezar, dudar y equivocarte MIENTRAS lees, adaptando la cantidad de errores al nivel cognitivo (Diagnosis y MMSE).
 
             Rules:
             {rules_block}
         """.strip(),
         zero_shot_rules=(
-            "Usa el prefijo PAR: para el texto generado.",
-            "PROHIBIDO usar acotaciones teatrales (ej. *pausa*, *murmura*, *lee*). PROHIBIDO añadir comentarios del paciente al final o al principio. Solo debes generar el intento de lectura.",
-            "INCRUSTA los errores y bloqueos DURANTE la lectura del pasaje, partiendo las frases. Para ello, DEBES usar OBLIGATORIAMENTE este diccionario de marcas CHAT:",
-            "  - Repeticiones: [/] (ejemplo: un [/] un hidalgo)",
-            "  - Reformulaciones/Autocorrecciones: [//] (ejemplo: carnero [//] vaca)",
-            "  - Rellenos de duda: &-eh , &-em",
-            "MODELA EL NIVEL COGNITIVO: Si el MMSE es alto (27-30), la lectura debe ser casi perfecta. Si el MMSE es bajo (<24) o tiene Demencia, destroza la fluidez con muchas repeticiones [/], reformulaciones [//], rellenos, y confunde palabras reales del texto.",
-            "ANTI-LOOP: Genera el pasaje intentando avanzar hasta el final de la frase 'tres partes de su hacienda'. Cuando llegues a esa palabra, DETENTE INMEDIATAMENTE y no generes más texto.",
+            "Escribe la transcripción separando los fragmentos con ' : ', con mayúsculas iniciales de frase y comas, como una lectura real.",
+            "PROHIBIDO usar acotaciones teatrales (ej. *pausa*, *murmura*, *lee*) o comentarios del paciente; solo el intento de lectura.",
+            "El paciente NO copia el pasaje literal: incrusta errores reales DURANTE la lectura (sustituciones, palabras partidas/repetidas, reinicios, omisiones).",
+            "Usa SOLO la marca CHAT [/] para repeticiones (ej. 'un [/] un hidalgo). NO uses (.), [//], &-eh ni &-em; las demás disfluencias van como palabras realmente mal leídas.",
+            "MODELA EL NIVEL COGNITIVO: MMSE alto (27-30)/HC = lectura casi perfecta con algún tropiezo; MMSE 20-26/MCI = vacilaciones y alguna sustitución; MMSE<20/Demencia = lectura muy fragmentada, sustituciones frecuentes y pérdida de estructura.",
+            "Avanza hasta 'tres partes de su hacienda' y termina ahí; no recites el pasaje más de una vez.",
         ),
         generation_options={
-            "temperature": 0.35, 
+            "temperature": 0.7,
             "top_p": 0.9,
             "top_k": 40,
         },
@@ -530,7 +549,11 @@ def self_check_prompt_specs() -> None:
         )
         print(f"[SELF-CHECK] user_preview_{ds}: {messages[-1]['content'][:160].replace(chr(10), ' ')}...")
 
-    assert validate_generated_text("INV: hi\nPAR: hello", get_prompt_spec("pitt"))
+    assert validate_generated_text(
+        ": all that you see going on in the picture ? : the &-uh boy (i)s in the cookie jar (.) handing a cookie .",
+        get_prompt_spec("pitt"),
+    )
+    assert not validate_generated_text("INV: hi : PAR: hello", get_prompt_spec("pitt"))
     assert validate_generated_text("SpeakerA: hi\nSpeakerB: hello", get_prompt_spec("default"))
 
     ivanova_target = {
@@ -555,7 +578,6 @@ def self_check_prompt_specs() -> None:
     ivanova_messages = build_messages(ivanova_spec, ivanova_target, ivanova_neighbors)
     ivanova_user = next((m["content"] for m in ivanova_messages if m["role"] == "user"), "")
 
-    assert "PAR:" in ivanova_user
     assert IVANOVA_REQUIRED_PASSAGE in ivanova_user
 
     print(
@@ -566,13 +588,11 @@ def self_check_prompt_specs() -> None:
     for line in ivanova_user.splitlines()[:40]:
         print(line)
 
-    ivanova_ok = f"PAR: {IVANOVA_REQUIRED_PASSAGE}"
-    ivanova_bad_prefix = f"*PAR: {IVANOVA_REQUIRED_PASSAGE}"
-    ivanova_bad_speaker = f"INV: hola\nPAR: {IVANOVA_REQUIRED_PASSAGE}"
-    ivanova_bad_topic = "PAR: Hoy fuimos al parque y comimos helado bajo el sol."
+    ivanova_ok = f": {IVANOVA_REQUIRED_PASSAGE}"
+    ivanova_bad_speaker = f"INV: hola : PAR: {IVANOVA_REQUIRED_PASSAGE}"
+    ivanova_bad_topic = ": Hoy fuimos al parque y comimos helado bajo el sol."
 
     assert validate_generated_text(ivanova_ok, ivanova_spec)
-    assert not validate_generated_text(ivanova_bad_prefix, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_speaker, ivanova_spec)
     assert not validate_generated_text(ivanova_bad_topic, ivanova_spec)
 
