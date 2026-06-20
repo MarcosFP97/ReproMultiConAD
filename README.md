@@ -87,10 +87,11 @@ BERT_balanced.py          ← Entrenamiento de los datasets con datos reales + s
 | 2 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
 | 3 | BERT | `experiments/BERT_classification.py` |
 | 4 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
-| 5 | TF-IDF por dataset individual (no balanceado/balanceado) | `experiments/TF_IDF_single_classifier.py` |
-| 6 | BERT con balanceo de clases para experimentos individuales y cross-task | `experiments/BERT_balanced.py` |
-| 7 | Aumento sintético (0–80% datos reales) | `data_augmentation/generacion_sintetica_*.py` |
-| 8 | Análisis final cross-task | `experiments/cross_task_analysis.py` |
+| 5 | SHAP agregado y ablación de tokens CHAT | `experiments/shap_analysis.py` |
+| 6 | TF-IDF por dataset individual (no balanceado/balanceado) | `experiments/TF_IDF_single_classifier.py` |
+| 7 | BERT con balanceo de clases para experimentos individuales y cross-task | `experiments/BERT_balanced.py` |
+| 8 | Aumento sintético (0–80% datos reales) | `data_augmentation/generacion_sintetica_*.py` |
+| 9 | Análisis final cross-task | `experiments/cross_task_analysis.py` |
 
 ### Marcas CHAT como tokens especiales
 
@@ -99,6 +100,12 @@ BERT_balanced.py          ← Entrenamiento de los datasets con datos reales + s
 | Pausas | `(.)`, `(..)`, `(1.2)` | `[PAUSE]` |
 | Repeticiones | `[/]` | `[REP]` |
 | Reformulaciones | `[//]` | `[REF]` |
+
+El análisis SHAP guarda los HTML y los Excel agregados en
+`results/BERT_tokenizer/`. La ablación se calcula sobre todas las muestras de test
+que contienen el marcador; SHAP se resume sobre una muestra estratificada. En
+español solo se analiza `[REP]`, ya que Ivanova no ofrece cobertura útil de pausas
+o reformulaciones.
 
 ### Aumento sintético
 

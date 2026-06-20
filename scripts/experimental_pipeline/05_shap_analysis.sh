@@ -7,35 +7,27 @@
 #SBATCH --mem=32G
 #SBATCH --time=24:00:00
 #SBATCH --output=/mnt/beegfs/groups/irgroup/sara_tfg/logs/SHAP_%j.log
-#SBATCH --array=0-15  # Define las 16 combinaciones
+#SBATCH --array=0-9
 
 source ~/.bashrc
 conda activate sara_tfg
 
-# Ejecutamos el análisis
+# En inglés se estudian los cuatro modos. En español solo REP tiene cobertura
+# real suficiente en Ivanova; PAUSE y REF no constituyen comparaciones válidas.
+combinations=(
+    "en binary rep"
+    "en binary ref"
+    "en binary pause"
+    "en binary all"
+    "en multiclass rep"
+    "en multiclass ref"
+    "en multiclass pause"
+    "en multiclass all"
+    "spa binary rep"
+    "spa multiclass rep"
+)
 
-# 2. Definir las variantes que quieres procesar
-# Idiomas: en, spa
-# Tasks: binary (puedes añadir multiclass si tienes los modelos)
-# Markers: rep, ref, pause, all
-languages=("spa" "en")
-tasks=("binary" "multiclass")
-markers=("rep" "ref" "pause" "all")
-
-# 3. Lógica para convertir el ID del array en una combinación única
-# Calculamos el total de combinaciones (2 * 2 * 4 = 16)
-# Lanzaremos el sbatch con --array=0-15
-
-total_markers=${#markers[@]}
-total_tasks=${#tasks[@]}
-
-lang_idx=$(( SLURM_ARRAY_TASK_ID / (total_tasks * total_markers) ))
-task_idx=$(( (SLURM_ARRAY_TASK_ID / total_markers) % total_tasks ))
-marker_idx=$(( SLURM_ARRAY_TASK_ID % total_markers ))
-
-current_lang=${languages[$lang_idx]}
-current_task=${tasks[$task_idx]}
-current_marker=${markers[$marker_idx]}
+read -r current_lang current_task current_marker <<< "${combinations[$SLURM_ARRAY_TASK_ID]}"
 
 echo "------------------------------------------------------------"
 echo "PROCESANDO: Idioma=$current_lang | Task=$current_task | Marker=$current_marker"
@@ -46,6 +38,8 @@ python /mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/shap_analy
     --language "$current_lang" \
     --task "$current_task" \
     --marker "$current_marker" \
-    --sample-size 30
+    --sample-size 60 \
+    --bootstrap-iterations 2000 \
+    --output-root /mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_tokenizer
 
 echo "Finalizado."
