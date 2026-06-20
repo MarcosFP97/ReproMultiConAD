@@ -31,7 +31,10 @@ Orden recomendado:
 5. `03_preprocess_marker_features.sh`
    - Genera variantes con marcas CHAT convertidas a tokens especiales.
    - Salidas en `jsonl/markers_collections/` con nombres esperados por `experiments/BERT_tokenizer.py`:
-     `train_{en|spa}_e5_markers_{pause|rep|ref|all}.jsonl` y equivalentes de test.
+     `train_{en|spa}_e5_markers_{none|pause|rep|ref|all}.jsonl` y equivalentes de test.
+   - La variante `none` usa los mismos corpus filtrados que las variantes con tokens,
+     pero elimina las tres marcas CHAT sin añadir tokens especiales. Es el baseline
+     controlado de la Fase 2.
 
 6. `04a_preprocess_individual_sets_english.sh`
    - Ejecuta `preprocessing_text/preprocess_individual_english.py`.

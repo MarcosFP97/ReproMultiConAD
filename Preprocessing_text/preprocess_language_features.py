@@ -51,9 +51,10 @@ RE_REF = re.compile(r"\[\s*(?:(?:/|\\/)\s*(?:/|\\/))\s*\]")
 
 def preprocess_text(text: Any, mode: str) -> str:
     """
-    mode: "pause" | "rep" | "ref" | "all"
+    mode: "none" | "pause" | "rep" | "ref" | "all"
     - Sustituye SOLO el/los marcadores activados por su token.
     - Si DROP_INACTIVE_MARKERS=True, elimina los otros marcadores.
+    - "none" elimina los tres marcadores sin añadir tokens especiales.
     """
     t = "" if text is None else str(text)
 
@@ -135,8 +136,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=["pause", "rep", "ref", "all"],
-        help="Which marker type to keep: pause | rep | ref | all",
+        choices=["none", "pause", "rep", "ref", "all"],
+        help="Which marker type to keep: none | pause | rep | ref | all",
     )
     parser.add_argument(
         "--data-root",

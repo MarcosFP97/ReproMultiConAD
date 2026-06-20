@@ -14,12 +14,14 @@ conda activate sara_tfg
 SCRIPT="/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_tokenizer.py"
 
 echo ">>> [SPA] Empezando BINARY"
+python -u "$SCRIPT" --language spa --task binary --mode none
 python -u "$SCRIPT" --language spa --task binary --mode pause
 python -u "$SCRIPT" --language spa --task binary --mode rep
 python -u "$SCRIPT" --language spa --task binary --mode ref
 python -u "$SCRIPT" --language spa --task binary --mode all
 
 echo ">>> [SPA] Empezando MULTICLASS"
+python -u "$SCRIPT" --language spa --task multiclass --mode none
 python -u "$SCRIPT" --language spa --task multiclass --mode pause
 python -u "$SCRIPT" --language spa --task multiclass --mode rep
 python -u "$SCRIPT" --language spa --task multiclass --mode ref
