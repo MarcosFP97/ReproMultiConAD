@@ -2,7 +2,8 @@
 Fine-tuning BERT con tokens especiales CHAT para clasificación de deterioro cognitivo.
 
 Extiende el vocabulario BERT con tokens derivados de anotaciones CHAT: [PAUSE], [REP], [REF].
-El argumento --mode controla qué tokens se añaden; "all" añade los tres simultáneamente.
+El argumento --mode controla qué tokens se añaden; "none" no añade ninguno y
+"all" añade los tres simultáneamente.
 Para la versión sin tokens especiales, ver BERT_classification.py.
 """
 import os
@@ -24,7 +25,13 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
 parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
 parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
-parser.add_argument("--mode", type=str, required=True, help="Tipo de tokenización especial : rep (repeticiones), ref (reformulaciones), pause (pausas) y all (todos los tokens a la vez)")
+parser.add_argument(
+    "--mode",
+    type=str,
+    required=True,
+    choices=["none", "pause", "rep", "ref", "all"],
+    help="Tokenizacion CHAT: none, pause, rep, ref o all.",
+)
 args = parser.parse_args()
 
 language = args.language
@@ -183,6 +190,8 @@ def get_special_tokens_for_mode(mode: str):
     añadirlos como additional_special_tokens y llamar a resize_token_embeddings les
     asigna embeddings propios en lugar de descomponerlos en subpalabras arbitrarias.
     """
+    if mode == "none":
+        return []
     if mode == "pause":
         return ["[PAUSE]"]
     if mode == "rep":
@@ -405,7 +414,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 
     specials = get_special_tokens_for_mode(mode)
-    tokenizer.add_special_tokens({"additional_special_tokens": specials})
+    if specials:
+        tokenizer.add_special_tokens({"additional_special_tokens": specials})
 
     if VERBOSE:
         test_str = "a " + " b ".join(specials) + " c"
@@ -430,7 +440,8 @@ def main():
 
     model = build_model(MODEL_NAME, num_labels=len(label_encoder.classes_), device=device)
     # Sin este resize, los tokens nuevos no tienen embedding propio y el forward lanza un error de índice.
-    model.resize_token_embeddings(len(tokenizer))
+    if specials:
+        model.resize_token_embeddings(len(tokenizer))
     optimizer = build_optimizer(model, lr=LR)
 
     print("\n[STEP 7] Training...")
@@ -471,7 +482,7 @@ def main():
     pred_df = pd.DataFrame(rows)
     pred_df["correct"] = pred_df["true_id"] == pred_df["pred_id"]
     
-    results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
+    results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_tokenizer"
     os.makedirs(results_dir, exist_ok=True)
 
     trunc_pct = compute_truncation_pct(train_df, tokenizer, TEXT_COL, MAX_LEN)
