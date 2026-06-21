@@ -2,10 +2,8 @@
 """
 Unified CHAT marker analysis across all ConvoCognition corpora.
 
-Generates 6 figures saved to markers_analysis/figs/:
-  - español_pause_rate.png
+Generates 4 figures saved to markers_analysis/figs/:
   - español_rep_rate.png
-  - español_ref_rate.png
   - english_pause_rate.png
   - english_rep_rate.png
   - english_ref_rate.png
@@ -16,6 +14,7 @@ corpus-level effects are immediately visible (e.g. PerLA has no pauses,
 Taukadial has no CHAT markers at all since it was auto-transcribed).
 """
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -36,25 +35,8 @@ RE_PAUSE_ALL = re.compile(r"\(\s*\.+\s*\)|\(\s*\d+(?:\.\d+)?\s*\)")
 
 # ── Dataset configuration ──────────────────────────────────────────────────────
 _HPC_BASE   = Path("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection")
-_LOCAL_BASE = Path("/Users/saracastrolopez/Desktop/clases/tfg/results_cha_collection")
+_LOCAL_BASE = Path.cwd() / "results_cha_collection"
 BASE = _HPC_BASE if _HPC_BASE.exists() else _LOCAL_BASE
-
-SPANISH_DATASETS: dict[str, "Path | list[Path]"] = {
-    "Ivanova": BASE / "Ivanova.jsonl",
-    "PerLA":   BASE / "PerLA.jsonl",
-}
-
-ENGLISH_DATASETS: dict[str, "Path | list[Path]"] = {
-    "Baycrest":  BASE / "Baycrest.jsonl",
-    "Delaware":  BASE / "Delaware.jsonl",
-    "Kempler":   BASE / "Kempler.jsonl",
-    "Lu":        BASE / "Lu.jsonl",
-    "Pitt":      BASE / "Pitt.jsonl",
-    "Taukadial": [BASE / "taukadial_English_train.jsonl",
-                  BASE / "taukadial_English_test.jsonl"],
-    "VAS":       BASE / "VAS.jsonl",
-    "WLS":       BASE / "WLS.jsonl",
-}
 
 TEXT_FIELD    = "Text_interviewer_participant"
 LABEL_FIELD   = "Diagnosis"
@@ -86,6 +68,11 @@ FEATURES: dict[str, tuple[str, str]] = {
     "pause_rate": ("Tasa de Pausas",          "Pausas / palabra"),
     "rep_rate":   ("Tasa de Repeticiones",    "Repeticiones / palabra"),
     "ref_rate":   ("Tasa de Reformulaciones", "Reformulaciones / palabra"),
+}
+
+FEATURES_BY_LANGUAGE = {
+    "Español": ("rep_rate",),
+    "English": ("pause_rate", "rep_rate", "ref_rate"),
 }
 
 # ── Feature extraction ─────────────────────────────────────────────────────────
@@ -234,15 +221,21 @@ def plot_feature(
     print(f"  Guardado: {out_path.name}")
 
 
-def generate_plots(df: pd.DataFrame, lang_label: str, datasets: dict) -> None:
+def generate_plots(
+    df: pd.DataFrame,
+    lang_label: str,
+    datasets: dict,
+    figs_dir: Path,
+) -> None:
     dataset_names = list(datasets.keys())
     colors = sns.color_palette("tab10", n_colors=len(dataset_names))
     palette = dict(zip(dataset_names, colors))
 
     lang_slug = lang_label.lower().replace(" ", "_")
 
-    for feature, (feature_label, ylabel) in FEATURES.items():
-        out_path = FIGS_DIR / f"{lang_slug}_{feature}.png"
+    for feature in FEATURES_BY_LANGUAGE[lang_label]:
+        feature_label, ylabel = FEATURES[feature]
+        out_path = figs_dir / f"{lang_slug}_{feature}.png"
         plot_feature(df, feature, feature_label, ylabel, lang_label, out_path, palette)
 
 
@@ -257,26 +250,68 @@ def print_stats(df: pd.DataFrame, lang_label: str) -> None:
     print(df.groupby(["dataset", "diagnosis"], observed=True).size().to_string())
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Genera diagramas de caja de las marcas CHAT por diagnóstico."
+    )
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=BASE,
+        help="Carpeta con los JSONL originales de cada corpus.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=FIGS_DIR,
+        help="Carpeta de salida para las cuatro figuras.",
+    )
+    return parser.parse_args()
+
+
+def build_dataset_paths(data_root: Path) -> tuple[dict, dict]:
+    spanish = {
+        "Ivanova": data_root / "Ivanova.jsonl",
+        "PerLA": data_root / "PerLA.jsonl",
+    }
+    english = {
+        "Baycrest": data_root / "Baycrest.jsonl",
+        "Delaware": data_root / "Delaware.jsonl",
+        "Kempler": data_root / "Kempler.jsonl",
+        "Lu": data_root / "Lu.jsonl",
+        "Pitt": data_root / "Pitt.jsonl",
+        "Taukadial": [
+            data_root / "taukadial_English_train.jsonl",
+            data_root / "taukadial_English_test.jsonl",
+        ],
+        "VAS": data_root / "VAS.jsonl",
+        "WLS": data_root / "WLS.jsonl",
+    }
+    return spanish, english
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    FIGS_DIR.mkdir(exist_ok=True)
+    args = parse_args()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     sns.set_style("whitegrid")
     sns.set_context("paper", font_scale=1.1)
+    spanish_datasets, english_datasets = build_dataset_paths(args.data_root)
 
     print("=== Español ===")
-    df_spa = build_dataframe(SPANISH_DATASETS)
+    df_spa = build_dataframe(spanish_datasets)
     if not df_spa.empty:
         print_stats(df_spa, "Español")
-        generate_plots(df_spa, "Español", SPANISH_DATASETS)
+        generate_plots(df_spa, "Español", spanish_datasets, args.output_dir)
     else:
         print("  [ERROR] No se cargaron datos en español.")
 
     print("\n=== English ===")
-    df_en = build_dataframe(ENGLISH_DATASETS)
+    df_en = build_dataframe(english_datasets)
     if not df_en.empty:
         print_stats(df_en, "English")
-        generate_plots(df_en, "English", ENGLISH_DATASETS)
+        generate_plots(df_en, "English", english_datasets, args.output_dir)
     else:
         print("  [ERROR] No data loaded for English.")
 
-    print("\nDone. Figures saved to:", FIGS_DIR)
+    print("\nDone. Figures saved to:", args.output_dir)

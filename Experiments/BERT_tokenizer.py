@@ -107,7 +107,10 @@ class ClassificationDataset(Dataset):
 def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
     df = pd.read_json(path, lines=True)
 
-    df = df[[label_col, text_col]].copy()
+    selected_columns = [label_col, text_col]
+    if "Dataset" in df.columns:
+        selected_columns.append("Dataset")
+    df = df[selected_columns].copy()
 
     if drop_label_value is not None:
         before = len(df)
@@ -119,6 +122,13 @@ def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
     df[text_col] = df[text_col].astype(str)
 
     return df
+
+
+def format_value_counts(df: pd.DataFrame, column: str) -> str:
+    if column not in df.columns:
+        return ""
+    counts = df[column].value_counts(dropna=False)
+    return " | ".join(f"{name}:{int(count)}" for name, count in counts.items())
 
 def encode_labels_fit(df, label_col):
     """
@@ -501,6 +511,8 @@ def main():
         "Drop_label_value": str(DROP_LABEL_VALUE),
         "Train_rows": len(train_df),
         "Test_rows": len(test_df),
+        "Train_datasets": format_value_counts(train_df, "Dataset"),
+        "Test_datasets": format_value_counts(test_df, "Dataset"),
         "Train_trunc_pct": trunc_pct,
         "Train_path": TRAIN_PATH,
         "Test_path": TEST_PATH,
