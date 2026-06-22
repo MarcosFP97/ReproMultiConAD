@@ -29,6 +29,21 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", required=True, help="Nombre del dataset (ej: Pitt, Lu, Baycrest, Delaware, taukadial, ivanova)")
 parser.add_argument("--balanced", action="store_true", help="Usar class_weight='balanced' en los clasificadores")
 parser.add_argument("--task", default="binary", choices=["binary", "multiclass"], help="Tarea de clasificación")
+parser.add_argument(
+    "--data-dir",
+    default="/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/TFIDF",
+    help="Carpeta que contiene train_<dataset>.jsonl y test_<dataset>.jsonl",
+)
+parser.add_argument(
+    "--results-dir",
+    default="/mnt/beegfs/groups/irgroup/sara_tfg/results",
+    help="Carpeta de salida para los Excel",
+)
+parser.add_argument(
+    "--log-dir",
+    default="/mnt/beegfs/groups/irgroup/sara_tfg/logs",
+    help="Carpeta de salida para los logs",
+)
 args = parser.parse_args()
 
 DATASET = args.dataset.strip()
@@ -38,7 +53,7 @@ TASK = args.task
 balance_tag = "balanced" if BALANCED else "unbalanced"
 class_weight = "balanced" if BALANCED else None
 
-data_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/TFIDF"
+data_dir = args.data_dir
 train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}.jsonl")
 test_path = os.path.join(data_dir, f"test_{DATASET_LOWER}.jsonl")
 
@@ -274,7 +289,7 @@ def run_tfidf_multiclass(train_df, test_df, random_state=42):
     return pd.DataFrame(results)
 
 
-log_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/logs/"
+log_dir = args.log_dir
 os.makedirs(log_dir, exist_ok=True)
 
 log_path = os.path.join(log_dir, f"TFIDF_{DATASET}_{balance_tag}_{TASK}.log")
@@ -293,7 +308,7 @@ if TASK == "binary":
 else:
     final_df = run_tfidf_multiclass(train_df, test_df)
 
-results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
+results_dir = args.results_dir
 os.makedirs(results_dir, exist_ok=True)
 
 results_path = os.path.join(results_dir, f"TFIDF_{DATASET}_{balance_tag}_{TASK}.xlsx")
