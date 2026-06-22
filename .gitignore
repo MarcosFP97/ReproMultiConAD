@@ -29,3 +29,11 @@ CLAUDE.md
 AGENTS.md
 # ----------------------------
 
+# ----------------------------
+# Secrets y datos sensibles
+# ----------------------------
+.env
+*.jsonl
+Data_augmentation/informe_clinico_ivanova.txt
+Sigir_2025_poster_.pdf
+

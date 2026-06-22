@@ -1,0 +1,40 @@
+name: sara_tfg
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    # Deep learning
+    - torch>=2.1.0
+    - transformers>=4.38.0
+    - sentence-transformers>=2.7.0
+    - datasets>=2.18.0
+    - accelerate>=0.27.0
+    # Classical ML
+    - scikit-learn>=1.4.0
+    - numpy>=1.26.0
+    - pandas>=2.1.0
+    # Explainability
+    - shap>=0.44.0
+    # LLM backends
+    - google-genai>=1.0.0
+    - ollama>=0.2.0
+    # Visualization
+    - matplotlib>=3.8.0
+    - seaborn>=0.13.0
+    # Utilities
+    - tqdm>=4.66.0
+    - python-dotenv>=1.0.0
+    - Pillow>=10.0.0
+
+# Reproducción del entorno:
+#   conda env create -f environment.yml
+#   conda activate sara_tfg
+#
+# Para Gemini: crear un fichero .env con GEMINI_API_KEY=<tu_clave>
+# Para Mistral: instalar Ollama (https://ollama.com) y ejecutar:
+#   ollama pull mistral-small3.2
