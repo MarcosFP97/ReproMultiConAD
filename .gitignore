@@ -37,3 +37,14 @@ AGENTS.md
 Data_augmentation/informe_clinico_ivanova.txt
 Sigir_2025_poster_.pdf
 
+# ----------------------------
+# Scripts de visualización / exploración puntual
+# ----------------------------
+Data_augmentation/analista_clinico.py
+Data_augmentation/comparativa_reales_vs_sinteticos.py
+Data_augmentation/generar_plots_datos_dataset.py
+Data_augmentation/visualizar_evolucion_matrices.py
+Experiments/TF_IDF_single_viz.py
+Markers_analysis/count_diagnosis.py
+Markers_analysis/count_features.py
+
