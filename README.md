@@ -1,4 +1,4 @@
-# ConvoCognition: Detección Temprana de Alzheimer en Conversaciones Inglés-Español
+# Reproducing MultiConAD: Assessing the Robustness of Speech-Based Cognitive Impairment Detection
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
@@ -8,17 +8,18 @@
   <img alt="HPC" src="https://img.shields.io/badge/HPC-SLURM-ED1C24?style=for-the-badge">
 </p>
 
-Repositorio del Trabajo de Fin de Grado sobre **detección automática de deterioro cognitivo y Enfermedad de Alzheimer a partir de transcripciones conversacionales en inglés y español**. El proyecto combina modelos clásicos (TF-IDF), representaciones densas (E5), modelos Transformer (BERT), aumento sintético con LLMs e interpretabilidad con SHAP, estructurado en cinco fases experimentales.
 
-> Este repositorio tiene fines de investigación. No constituye una herramienta clínica ni un sistema de diagnóstico médico.
+Repository accompanying the reproducibility paper **Reproducing MultiConAD: Assessing the Robustness of Speech-Based Cognitive Impairment Detection**. The project combines classical models (TF-IDF), dense representations (E5), Transformer models (BERT), synthetic data augmentation with LLMs, and cross-dataset experiments, structured into five experimental phases.
+
+> This repository is intended for research purposes. It is not a clinical tool or a medical diagnostic system.
 
 ---
 
-## Punto de partida: MultiConAD
+## Starting Point: MultiConAD
 
-El proyecto parte del pipeline de **MultiConAD: A Unified Multilingual Conversational Dataset for Early Alzheimer's Detection** [[arXiv:2502.19208]](https://arxiv.org/abs/2502.19208), que proporciona la infraestructura base para normalizar datasets conversacionales sobre demencia, unificar metadatos clínicos y demográficos, y evaluar modelos en escenarios monolingües y multilingües.
+The project builds upon the pipeline introduced in **MultiConAD: A Unified Multilingual Conversational Dataset for Early Alzheimer's Detection** [[arXiv:2502.19208]](https://arxiv.org/abs/2502.19208), which provides the underlying infrastructure for normalizing conversational datasets on dementia, harmonizing clinical and demographic metadata, and evaluating models in both monolingual and multilingual settings.
 
-Este TFG restringe el estudio a **inglés y español**, incorporando análisis por dataset, marcas CHAT como tokens especiales, aumento sintético controlado y transferencia cross-dataset.
+This paper restricts the study to **English and Spanish**, incorporating Transformer-based models, dataset-specific analyses, CHAT markers as special tokens, controlled synthetic data augmentation, and cross-dataset transfer.
 
 ---
 
@@ -34,7 +35,7 @@ Este TFG restringe el estudio a **inglés y español**, incorporando análisis p
 | WLS | Inglés | Varias | HC, Dementia |
 | Ivanova | Español | Lectura (El Quijote) | HC, MCI, Dementia |
 
-Los datos normalizados siguen el esquema `NormalizedDataPoint` en JSONL:
+The normalized data follow the `NormalizedDataPoint` schema in JSONL format:
 
 ```json
 {
@@ -44,35 +45,39 @@ Los datos normalizados siguen el esquema `NormalizedDataPoint` en JSONL:
 }
 ```
 
-Los datasets originales no se distribuyen en este repositorio. Para ejecutar el proyecto en otra máquina, adaptar las rutas en los scripts SLURM o pasar las rutas como argumentos CLI.
+The original datasets are not distributed in this repository. Access to the DementiaBank data is restricted and must be requested through DementiaBank/TalkBank. Researchers should follow the [official data access instructions](https://talkbank.org/dementia/access/) to **request access** and comply with the applicable data-use requirements.
 
 ---
 
 ## Pipeline
 
 ```
-Ficheros CHAT (.cha)
+CHAT files (.cha)
     │
     ▼
-extracting_data/          ← Parseo y normalización a JSONL
+extracting_data/          ← Parsing and normalization to JSONL
     │
     ▼
-preprocessing_text/       ← Limpieza de texto + marcas CHAT → tokens especiales
+preprocessing_text/       ← Text cleaning + CHAT markers → special tokens
     │
     ▼
 ┌───────────────────────────────────────────────┐
-│               EXPERIMENTOS                     │
-│  TF-IDF baselines → E5 embeddings → BERT       │
+│               EXPERIMENTS                     │
+│  TF-IDF baselines → E5 embeddings → BERT      │
 └───────────────────────────────────────────────┘
     │
     ▼
-data_augmentation/        ← Generación sintética (Gemini / Mistral)
+data_augmentation/        ← Synthetic generation (Gemini / Mistral)
     │
     ▼
-experiments/BERT_balanced.py   ← Entrenamiento con datos reales + sintéticos + cross-dataset
+experiments/BERT_balanced.py   ← Training with real + synthetic data + cross-dataset
 ```
 
 ---
+
+## Train/test splits
+
+Aquí hablar de los oficiales de MultiConAD. División para experimentos individuales. Poner hiperparams. 
 
 ## Experimentos
 
@@ -82,7 +87,6 @@ experiments/BERT_balanced.py   ← Entrenamiento con datos reales + sintéticos 
 | 2 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
 | 3 | BERT ajuste fino | `experiments/BERT_classification.py` |
 | 4 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
-| 5 | SHAP agregado y ablación de tokens CHAT | `experiments/shap_analysis.py` |
 | 6 | TF-IDF por dataset individual (balanceado/no balanceado) | `experiments/TF_IDF_single_classifier.py` |
 | 7 | BERT balanceado: individual, cross-dataset y sintético | `experiments/BERT_balanced.py` |
 | 8 | Generación sintética (0–100 % datos reales) | `data_augmentation/generacion_sintetica_*.py` |
@@ -107,6 +111,8 @@ La generación se condiciona con diagnóstico, edad, género, MMSE y ejemplos re
 ```
 
 Modelos disponibles: **Gemini 2.5 Flash** (API, con imagen Cookie Theft en Pitt) y **Mistral Small 3.2** (local vía Ollama).
+
+PONER PROMPT
 
 ### Transferencia cross-dataset
 
