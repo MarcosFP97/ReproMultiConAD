@@ -150,7 +150,7 @@ python experiments/BERT_beyond.py --mode cross --train-dataset pitt --test-datas
 # Synthetic data
 python experiments/BERT_beyond.py --mode synthetic --real-percentage 80 --task binary
 
-# Generación sintética
+# Synthetic generation
 python data_augmentation/syn_gen_gemini.py --dataset pitt --real-percentage 20
 python data_augmentation/syn_gen_sintetica_mistral.py --dataset pitt --real-percentage 20
 ```
