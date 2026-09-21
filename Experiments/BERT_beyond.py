@@ -1,11 +1,11 @@
 """
-BERT_balanced.py — Fine-tuning BERT con pérdida ponderada por clase para detección de
-deterioro cognitivo a partir de transcripciones conversacionales.
+BERT_balanced.py — Fine-tuning BERT with class-weighted loss for cognitive
+impairment detection from conversational transcripts.
 
-Soporta tres modos experimentales:
-  - individual : entrena y evalúa en el mismo dataset (split interno 80/20).
-  - synthetic   : entrena con distintas proporciones de datos reales y sintéticos.
-  - cross_task  : entrena con train+test de un dataset y evalúa datasets externos.
+Supports three experimental modes:
+  - individual : trains and evaluates on the same dataset (internal 80/20 split).
+  - synthetic   : trains with different proportions of real and synthetic data.
+  - cross_task  : trains on train+test from one dataset and evaluates on external datasets.
 """
 import os
 import argparse
@@ -35,28 +35,28 @@ RESULTS_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_synthetic_analys
 SPANISH_DATASETS = {"ivanova", "perla"}
 
 parser = argparse.ArgumentParser(
-    description="Entrenamiento BERT balanceado para experimentos individual, cross-dataset o sintéticos."
+    description="Balanced BERT training for individual, cross-dataset, or synthetic experiments."
 )
 parser.add_argument(
     "--mode",
     type=str,
     choices=["individual", "synthetic", "cross_task"],
     default="individual",
-    help="Diseño experimental: individual, synthetic o cross_task.",
+    help="Experimental design: individual, synthetic, or cross_task.",
 )
 parser.add_argument(
     "--train-dataset",
     type=str,
     required=True,
-    help="Dataset usado para entrenar (ej: ivanova, pitt, taukadial).",
+    help="Dataset used for training (e.g., ivanova, pitt, taukadial).",
 )
 parser.add_argument(
     "--cross-test-datasets",
     nargs="*",
     default=[],
     help=(
-        "Datasets externos de test para mode=cross_task "
-        "(ej: --cross-test-datasets wls taukadial)."
+        "External test datasets for mode=cross_task "
+        "(e.g., --cross-test-datasets wls taukadial)."
     ),
 )
 parser.add_argument(
@@ -64,7 +64,7 @@ parser.add_argument(
     type=str,
     required=True,
     choices=["binary", "multiclass"],
-    help="Tipo de tarea.",
+    help="Task type.",
 )
 parser.add_argument(
     "--binary-task",
@@ -72,10 +72,10 @@ parser.add_argument(
     choices=["hc_dementia", "hc_mci", "disease_status"],
     default=None,
     help=(
-        "Definición explícita de la tarea binaria. "
-        "hc_dementia conserva HC/Dementia; hc_mci conserva HC/MCI; "
-        "disease_status mapea HC=NoDisease y MCI/Dementia=Disease. "
-        "Si no se indica en task=binary, se usa hc_dementia por compatibilidad."
+        "Explicit definition of the binary task. "
+        "hc_dementia keeps HC/Dementia; hc_mci keeps HC/MCI; "
+        "disease_status maps HC=NoDisease and MCI/Dementia=Disease. "
+        "If not specified for task=binary, hc_dementia is used for compatibility."
     ),
 )
 parser.add_argument(
@@ -83,26 +83,26 @@ parser.add_argument(
     type=str,
     choices=["real", "synthetic", "augmented"],
     default="augmented",
-    help="Fuente de entrenamiento en mode=synthetic: real, synthetic o augmented.",
+    help="Training source in mode=synthetic: real, synthetic, or augmented.",
 )
 parser.add_argument(
     "--real-percentage",
     type=int,
     default=None,
-    help="Porcentaje de datos reales que se usan en mode=synthetic.",
+    help="Percentage of real data used in mode=synthetic.",
 )
 parser.add_argument(
     "--synthetic-percentage",
     type=int,
     default=None,
-    help="Porcentaje de datos sintéticos que se usan en mode=synthetic.",
+    help="Percentage of synthetic data used in mode=synthetic.",
 )
 parser.add_argument(
     "--synthetic-source",
     type=str,
     choices=["mistral", "gemini"],
     default="mistral",
-    help="LLM usado para los ficheros sintéticos en mode=synthetic.",
+    help="LLM used for synthetic files in mode=synthetic.",
 )
 args = parser.parse_args()
 
@@ -120,15 +120,15 @@ binary_task = args.binary_task
 
 if mode == "cross_task":
     if task != "binary":
-        parser.error("--mode cross_task requiere --task binary.")
+        parser.error("--mode cross_task requires --task binary.")
     if binary_task is not None and binary_task != "disease_status":
-        parser.error("--mode cross_task requiere --binary-task disease_status.")
+        parser.error("--mode cross_task requires --binary-task disease_status.")
     binary_task = "disease_status"
 elif task == "binary":
     binary_task = binary_task or "hc_dementia"
 else:
     if binary_task is not None:
-        parser.error("--binary-task solo debe usarse con --task binary.")
+        parser.error("--binary-task can only be used with --task binary.")
     binary_task = None
 
 BINARY_TASKS = {
@@ -157,20 +157,20 @@ EXPECTED_LABEL_VALUES = sorted(set(LABEL_MAPPING.values())) if LABEL_MAPPING els
 EXPERIMENT_TASK = task if binary_task is None else f"{task}_{binary_task}"
 
 if mode == "cross_task" and not cross_test_datasets:
-    parser.error("--mode cross_task requiere al menos un dataset en --cross-test-datasets.")
+    parser.error("--mode cross_task requires at least one dataset in --cross-test-datasets.")
 
 if mode != "cross_task" and cross_test_datasets:
-    parser.error("--cross-test-datasets solo debe usarse con --mode cross_task.")
+    parser.error("--cross-test-datasets can only be used with --mode cross_task.")
 
 if mode != "synthetic":
     if args.real_percentage is not None or args.synthetic_percentage is not None:
-        parser.error("--real-percentage y --synthetic-percentage solo deben usarse con --mode synthetic.")
+        parser.error("--real-percentage and --synthetic-percentage can only be used with --mode synthetic.")
 
 if args.real_percentage is not None and not 0 <= args.real_percentage <= 100:
-    parser.error("--real-percentage debe estar en el rango 0..100.")
+    parser.error("--real-percentage must be in the range 0..100.")
 
 if args.synthetic_percentage is not None and not 0 <= args.synthetic_percentage <= 100:
-    parser.error("--synthetic-percentage debe estar en el rango 0..100.")
+    parser.error("--synthetic-percentage must be in the range 0..100.")
 
 
 def real_train_path(dataset_name: str, percentage: int) -> str:
@@ -197,9 +197,9 @@ elif mode == "cross_task":
 else:
     if train_source == "real":
         if args.real_percentage is None:
-            parser.error("--real-percentage es obligatorio con --train-source real.")
+            parser.error("--real-percentage is required with --train-source real.")
         if args.synthetic_percentage is not None:
-            parser.error("--synthetic-percentage no debe usarse con --train-source real.")
+            parser.error("--synthetic-percentage cannot be used with --train-source real.")
         real_percentage = args.real_percentage
         synthetic_percentage = None
         TRAIN_PATHS = [real_train_path(train_dataset, real_percentage)]
@@ -207,9 +207,9 @@ else:
 
     elif train_source == "synthetic":
         if args.synthetic_percentage is None:
-            parser.error("--synthetic-percentage es obligatorio con --train-source synthetic.")
+            parser.error("--synthetic-percentage is required with --train-source synthetic.")
         if args.real_percentage is not None:
-            parser.error("--real-percentage no debe usarse con --train-source synthetic.")
+            parser.error("--real-percentage cannot be used with --train-source synthetic.")
         real_percentage = None
         synthetic_percentage = args.synthetic_percentage
         TRAIN_PATHS = [synthetic_train_path(train_dataset, synthetic_percentage, args.synthetic_source)]
@@ -217,11 +217,11 @@ else:
 
     else:
         if args.real_percentage is None or args.synthetic_percentage is None:
-            parser.error("--real-percentage y --synthetic-percentage son obligatorios con --train-source augmented.")
+            parser.error("--real-percentage and --synthetic-percentage are required with --train-source augmented.")
         real_percentage = args.real_percentage
         synthetic_percentage = args.synthetic_percentage
         if real_percentage + synthetic_percentage != 100:
-            parser.error("En --train-source augmented, real-percentage + synthetic-percentage debe sumar 100.")
+            parser.error("In --train-source augmented, real-percentage + synthetic-percentage must sum to 100.")
 
         TRAIN_PATHS = []
         if real_percentage > 0:
@@ -246,9 +246,9 @@ if train_dataset in SPANISH_DATASETS:
 else:
     MODEL_NAME = "bert-base-uncased"
     
-# MAX_LEN=256 cubre el percentil ~90 de longitudes en los corpus clínicos usados
-# sin el coste de memoria/cómputo de 512 tokens; LR=5e-5 y EPOCHS=3 siguen las
-# recomendaciones originales de fine-tuning de BERT (Devlin et al., 2019).
+# MAX_LEN=256 covers the ~90th percentile of lengths in the clinical corpora used
+# without the memory/computation cost of 512 tokens; LR=5e-5 and EPOCHS=3 follow the
+# original BERT fine-tuning recommendations (Devlin et al., 2019).
 MAX_LEN    = 256
 BATCH_SIZE = 16
 LR         = 5e-5
@@ -259,10 +259,10 @@ VERBOSE = True
 
 class ClassificationDataset(Dataset):
     """
-    Representación de cada ejemplo:
-      - Texto (string)
-      - Etiqueta (int)
-      - tokenizer(...) produce:
+    Representation of each example:
+      - Text (string)
+      - Label (int)
+      - tokenizer(...) produces:
           input_ids:      tensor [max_len]
           attention_mask: tensor [max_len]
     """
@@ -288,7 +288,7 @@ class ClassificationDataset(Dataset):
             return_tensors="pt",
         )
 
-        # HuggingFace Trainer espera la clave "labels" (no "label")
+        # HuggingFace Trainer expects the key "labels" (not "label")
         return {
             "input_ids": encoding["input_ids"].squeeze(0),
             "attention_mask": encoding["attention_mask"].squeeze(0),
@@ -319,10 +319,10 @@ def load_and_prepare_df(paths, text_col, label_col, keep_label_values=None, labe
     return df
 
 def validate_label_coverage(df, label_col, expected_labels, split_name, path_description):
-    """Falla explícitamente si alguna clase esperada está ausente en el split.
+    """Fails explicitly if an expected class is missing from the split.
 
-    Previene evaluaciones silenciosamente triviales (ej. cross-dataset con clases
-    incompatibles que quedan a cero tras el filtrado).
+    Prevents silently trivial evaluations (e.g., cross-dataset settings with
+    incompatible classes that end up at zero after filtering).
     """
     if not expected_labels:
         return
@@ -333,43 +333,43 @@ def validate_label_coverage(df, label_col, expected_labels, split_name, path_des
     if missing_labels:
         distribution = df[label_col].value_counts().to_dict()
         raise ValueError(
-            f"Tras filtrar {expected_labels}, {split_name} no contiene todas las clases. "
-            f"Faltan: {missing_labels}. Distribucion actual: {distribution}. "
-            f"Fuente: {path_description}"
+            f"After filtering {expected_labels}, {split_name} does not contain all classes. "
+            f"Missing: {missing_labels}. Current distribution: {distribution}. "
+            f"Source: {path_description}"
         )
 
 def encode_labels_fit(df, label_col):
     """
-    Ajusta LabelEncoder con train y crea columna df['label'] con ints.
+    Fits the LabelEncoder on train data and creates a df['label'] column with integer values.
     """
     le = LabelEncoder()
     df = df.copy()
     df["label"] = le.fit_transform(df[label_col])
 
     if VERBOSE:
-        print("\n[LABEL ENCODING] classes_ (orden -> id):")
+        print("\n[LABEL ENCODING] classes_ (order -> id):")
         for i, c in enumerate(le.classes_):
             print(f"  {i} -> {c}")
 
-        print("\n[LABEL ENCODING] distribución en train_df (por nombre):")
+        print("\n[LABEL ENCODING] distribution in train_df (by name):")
         print(df[label_col].value_counts())
 
-        print("\n[LABEL ENCODING] distribución en train_df (por id):")
+        print("\n[LABEL ENCODING] distribution in train_df (by id):")
         print(df["label"].value_counts().sort_index())
 
     return df, le
 
 def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     """
-    Usa el LabelEncoder del train para transformar etiquetas del test.
+    Uses the train LabelEncoder to transform the test labels.
     """
     df = df.copy()
 
     unseen = set(df[label_col].unique()) - set(label_encoder.classes_)
     if unseen:
         raise ValueError(
-            f"Etiquetas en TEST que no existen en TRAIN: {unseen}. "
-            "Asegúrate de que train tenga todas las clases."
+            f"Labels in TEST that do not exist in TRAIN: {unseen}. "
+            "Make sure train contains all classes."
         )
 
     df["label"] = label_encoder.transform(df[label_col])
@@ -377,8 +377,8 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
 
 def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
     """
-    Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
-    stratify mantiene proporciones de clase.
+    Splits the train set into train/val to monitor learning during fine-tuning.
+    stratify preserves class proportions when possible.
     """
     labels = df[label_encoded_col].values
     class_counts = pd.Series(labels).value_counts()
@@ -394,9 +394,9 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
 
     if VERBOSE and not can_stratify:
         print(
-            "[SPLIT][WARN] No se puede estratificar de forma segura "
+            "[SPLIT][WARN] Stratification cannot be applied safely "
             f"(min_class_count={int(class_counts.min())}, n_classes={n_classes}, "
-            f"val_size_est={val_size_est}). Se hará split sin stratify."
+            f"val_size_est={val_size_est}). A split without stratification will be used."
         )
 
     try:
@@ -410,7 +410,7 @@ def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, rand
     except ValueError as e:
         if stratify_labels is not None:
             if VERBOSE:
-                print(f"[SPLIT][WARN] Falló split estratificado ({e}). Reintentando sin stratify.")
+                print(f"[SPLIT][WARN] Stratified split failed ({e}). Retrying without stratify.")
             train_texts, val_texts, train_labels, val_labels = train_test_split(
                 df[text_col].values,
                 labels,
@@ -434,11 +434,11 @@ def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=F
     return loader
 
 class CustomTrainer(Trainer):
-    """Extiende HuggingFace Trainer para aplicar pérdida ponderada por clase.
+    """Extends HuggingFace Trainer to apply class-weighted loss.
 
-    En datasets clínicos desbalanceados (HC >> MCI o Dementia), la CrossEntropyLoss
-    estándar tiende a optimizar la clase mayoritaria. Los pesos inversamente
-    proporcionales a la frecuencia de cada clase corrigen este sesgo.
+    In imbalanced clinical datasets (HC >> MCI or Dementia), standard CrossEntropyLoss
+    tends to optimize the majority class. Weights inversely proportional to class
+    frequency correct this bias.
     """
     def __init__(self, class_weights=None, **kwargs):
         super().__init__(**kwargs)
@@ -506,10 +506,10 @@ def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: 
 
 def build_experiment_row(*, y_true: list, y_pred: list, class_names: list, exp_meta: dict,) -> pd.DataFrame:
     """
-    Devuelve un DF de 1 fila con:
-    - metadatos del experimento
+    Returns a 1-row DataFrame with:
+    - experiment metadata
     - accuracy, macro/weighted precision/recall/f1
-    - métricas por clase (precision/recall/f1/support)
+    - per-class metrics (precision/recall/f1/support)
     """
     report = classification_report(
         y_true, y_pred,
@@ -550,10 +550,10 @@ def save_results_excel(
 ):
     """
     Excel:
-      - summary: 1 fila con métricas + metadatos
-      - confusion_matrix: matriz con labels
-      - baseline_confusion_matrix: matriz del baseline mayoritario si aplica
-      - predictions: predicciones fila a fila para análisis cross-task
+      - summary: 1 row with metrics + metadata
+      - confusion_matrix: matrix with labels
+      - baseline_confusion_matrix: majority-baseline confusion matrix if applicable
+      - predictions: row-by-row predictions for cross-task analysis
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -652,7 +652,7 @@ def main():
         eval_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
-        metric_for_best_model="macro_f1", # Para evitar que colapse a la mayoritaria en los modelos individuales
+        metric_for_best_model="macro_f1", # To avoid collapsing to the majority class in individual models
         greater_is_better=True,
         save_total_limit=1,
         logging_dir='./logs',

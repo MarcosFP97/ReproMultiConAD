@@ -16,15 +16,15 @@ TEXT_FIELD = "Text_interviewer_participant"
 PARTICIPANT_FIELD = "Text_participant"
 
 input_files = [
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Pitt.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Lu.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Baycrest.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/VAS.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Kempler.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/WLS.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Delaware.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/taukadial_English_train.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/taukadial_English_test.jsonl",
+    "./results_cha_collection/Pitt.jsonl",
+    "./results_cha_collection/Lu.jsonl",
+    "./results_cha_collection/Baycrest.jsonl",
+    "./results_cha_collection/VAS.jsonl",
+    "./results_cha_collection/Kempler.jsonl",
+    "./results_cha_collection/WLS.jsonl",
+    "./results_cha_collection/Delaware.jsonl",
+    "./results_cha_collection/taukadial_English_train.jsonl",
+    "./results_cha_collection/taukadial_English_test.jsonl",
 ]
 
 output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
@@ -172,7 +172,6 @@ def main() -> None:
     train_light.to_json(os.path.join(output_directory, "train_en_e5.jsonl"), orient="records", lines=True, force_ascii=False)
     test_light.to_json(os.path.join(output_directory, "test_en_e5.jsonl"), orient="records", lines=True, force_ascii=False)
 
-    print("\nGuardado global EN:")
     print(" -", os.path.join(output_directory, "train_en.jsonl"), "[TFIDF fuerte]")
     print(" -", os.path.join(output_directory, "test_en.jsonl"), "[TFIDF fuerte]")
     print(" -", os.path.join(output_directory, "train_en_e5.jsonl"), "[light]")

@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import re
 
-DATA_ROOT = Path("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl")
+DATA_ROOT = Path("./jsonl")
 RESULTS_DIRNAME = "results_cha_collection"
 OUTPUT_DIRNAME = "individual_sets"
 RANDOM_STATE = 42
@@ -121,14 +121,6 @@ def process_dataset(dataset: str, data_root: Path, output_dir: Path) -> None:
     test_out = output_dir / f"test_{dataset}.jsonl"
     train_df.to_json(train_out, orient="records", lines=True, force_ascii=False)
     test_df.to_json(test_out, orient="records", lines=True, force_ascii=False)
-
-    print(f"\nGuardado {dataset}:")
-    print(" -", train_out)
-    print(" -", test_out)
-    print("Distribucion train:")
-    print(train_df["Diagnosis"].value_counts(dropna=False))
-    print("Distribucion test:")
-    print(test_df["Diagnosis"].value_counts(dropna=False))
 
     tfidf_output_dir = output_dir / "TFIDF"
     tfidf_output_dir.mkdir(parents=True, exist_ok=True)

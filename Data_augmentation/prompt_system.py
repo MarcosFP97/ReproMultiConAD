@@ -1,9 +1,9 @@
 """
-Especificación de prompts y validación por dataset para la generación de transcripciones sintéticas.
+Prompt specification and dataset-level validation for synthetic transcription generation.
 
-Define los PromptSpec de cada corpus (Pitt, Ivanova, default), validadores de formato CHAT,
-utilidades de formateo de vecinos KNN y la función central prepare_prompt_payload()
-usada por ambos backends (Gemini y Ollama).
+Defines the PromptSpec for each corpus (Pitt, Ivanova, default), CHAT-format validators,
+KNN neighbor formatting utilities, and the central prepare_prompt_payload() function
+used by both backends (Gemini and Ollama).
 """
 
 import re
@@ -56,9 +56,9 @@ class PromptSpec:
 
 def validate_chat(texto: str | None) -> bool:
     """
-    Validacion minima CHAT:
-    - Debe empezar con INV: o PAR:
-    - Debe tener al menos una linea INV: y una PAR:
+    Minimal CHAT validation:
+    - It must start with INV: or PAR:
+    - It must contain at least one INV: line and one PAR: line
     """
     if not texto:
         return False
@@ -84,7 +84,7 @@ def validate_chat(texto: str | None) -> bool:
 
 
 def validate_required_roles(texto: str | None, spec: PromptSpec) -> bool:
-    """Valida que estén todos los speakers requeridos y que la primera línea use uno permitido."""
+    """Validates that all required speakers are present and that the first line uses an allowed prefix."""
     if not texto:
         return False
 
@@ -105,12 +105,12 @@ def validate_required_roles(texto: str | None, spec: PromptSpec) -> bool:
 
 
 def validate_chat_for_spec(texto: str | None, _: PromptSpec) -> bool:
-    """Adapter para reutilizar la validación CHAT existente en specs concretos."""
+    """Adapter to reuse the existing CHAT validation in concrete specs."""
     return validate_chat(texto)
 
 
 def validate_only_par_lines(texto: str | None, _: PromptSpec) -> bool:
-    """Toda línea no vacía debe comenzar exactamente con 'PAR:'."""
+    """Every non-empty line must begin exactly with 'PAR:'."""
     if not texto:
         return False
     for line in texto.splitlines():
@@ -120,7 +120,7 @@ def validate_only_par_lines(texto: str | None, _: PromptSpec) -> bool:
 
 
 def _normalize_for_keyword_match(texto: str) -> str:
-    """Normaliza para matching robusto de keywords (case/acento-insensitive)."""
+    """Normalizes text for robust keyword matching (case/accent-insensitive)."""
     texto = texto.lower()
     texto = unicodedata.normalize("NFD", texto)
     texto = "".join(ch for ch in texto if unicodedata.category(ch) != "Mn")
@@ -129,9 +129,9 @@ def _normalize_for_keyword_match(texto: str) -> str:
 
 def validate_contains_passage_verbatim(texto: str | None, _: PromptSpec) -> bool:
     """
-    Validación temática suave para Ivanova:
-    comprueba que el texto trate el contenido de lectura esperado
-    mediante coincidencia de palabras clave del pasaje.
+    Soft thematic validation for Ivanova:
+    checks that the text addresses the expected reading content
+    by matching key words from the passage.
     """
     if not texto:
         return False
@@ -144,7 +144,7 @@ def validate_contains_passage_verbatim(texto: str | None, _: PromptSpec) -> bool
 
 
 def validate_no_other_speakers(texto: str | None, _: PromptSpec) -> bool:
-    """Rechaza cualquier etiqueta de speaker distinta de PAR:."""
+    """Rejects any speaker label other than PAR:."""
     if not texto:
         return False
     for line in texto.splitlines():
@@ -157,14 +157,14 @@ def validate_no_other_speakers(texto: str | None, _: PromptSpec) -> bool:
 
 
 def validate_no_speaker_labels(texto: str | None, _: PromptSpec) -> bool:
-    """Rechaza etiquetas de hablante (INV:/PAR:/SpeakerX:): el corpus real usa solo ' : '."""
+    """Rejects speaker labels (INV:/PAR:/SpeakerX:); the real corpus uses only ' : '."""
     if not texto:
         return False
     return re.search(r"\b(INV|PAR|SpeakerA|SpeakerB)\s*:", texto) is None
 
 
 def validate_no_code_artifacts(texto: str | None, _: PromptSpec) -> bool:
-    """Rechaza markdown/code fences y artefactos de notebook/código."""
+    """Rejects markdown/code fences and notebook/code artifacts."""
     if not texto or not texto.strip():
         return False
     if "```" in texto:
@@ -401,7 +401,7 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
 
 
 def get_prompt_spec(dataset_name: str) -> PromptSpec:
-    """Devuelve el PromptSpec por dataset con fallback seguro."""
+    """Returns the PromptSpec for a dataset with a safe fallback."""
     key = (dataset_name or "").strip().lower()
     if key in PROMPT_REGISTRY:
         return PROMPT_REGISTRY[key]
@@ -411,7 +411,7 @@ def get_prompt_spec(dataset_name: str) -> PromptSpec:
 
 
 def format_neighbors(vecinos: pd.DataFrame, spec: PromptSpec) -> str:
-    """Formatea vecinos según el encabezado definido por el spec."""
+    """Formats neighbors according to the header defined by the spec."""
     bloques = []
     for i, r in enumerate(vecinos.itertuples(index=False), 1):
         row = {
@@ -434,7 +434,7 @@ def build_messages(
     basic: bool = False,
     zero_shot: bool = False,
 ) -> list[dict]:
-    """Construye mensajes para el modelo usando plantillas del PromptSpec."""
+    """Builds model messages using the PromptSpec templates."""
     rules = spec.zero_shot_rules if zero_shot else spec.dataset_rules
     rules_block = "\n".join(f"{i}. {rule}" for i, rule in enumerate(rules or (), 1))
 
@@ -477,9 +477,9 @@ def prepare_prompt_payload(
     zero_shot: bool = False,
 ) -> dict[str, Any]:
     """
-    Prepara un payload de prompt agnóstico de backend.
+    Prepares a backend-agnostic prompt payload.
 
-    Devuelve:
+    Returns:
     {
         "spec": PromptSpec,
         "messages": list[dict],
@@ -505,14 +505,14 @@ def prepare_prompt_payload(
 
 
 def validate_generated_text(texto: str | None, spec: PromptSpec) -> bool:
-    """Aplica validadores del dataset en cadena."""
+    """Applies dataset validators in sequence."""
     if not spec.validators:
         return bool(texto and texto.strip())
     return all(validator(texto, spec) for validator in spec.validators)
 
 
 def self_check_prompt_specs() -> None:
-    """Autocheck rápido de construcción de mensajes sin llamar a Ollama."""
+    """Quick self-check of message construction without calling Ollama."""
     dummy_target = {
         "Diagnosis": "HC",
         "Age": 71,

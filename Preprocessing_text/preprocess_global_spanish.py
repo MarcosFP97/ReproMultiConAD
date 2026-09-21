@@ -14,10 +14,10 @@ TEST_SIZE = 0.2
 TEXT_FIELD = "Text_interviewer_participant"
 
 input_files = [
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/Ivanova.jsonl",
-    "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection/PerLA.jsonl",
+    "./results_cha_collection/Ivanova.jsonl",
+    "./results_cha_collection/PerLA.jsonl",
 ]
-output_directory = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
+output_directory = "./jsonl"
 output_filename = "combined_jsonl_spanish.jsonl"
 
 
@@ -123,7 +123,6 @@ def main() -> None:
     train_light.to_json(os.path.join(output_directory, "train_spa_e5.jsonl"), orient="records", lines=True, force_ascii=False)
     test_light.to_json(os.path.join(output_directory, "test_spa_e5.jsonl"), orient="records", lines=True, force_ascii=False)
 
-    print("\nGuardado global SPA:")
     print(" -", os.path.join(output_directory, "train_spa.jsonl"), "[TFIDF fuerte]")
     print(" -", os.path.join(output_directory, "test_spa.jsonl"), "[TFIDF fuerte]")
     print(" -", os.path.join(output_directory, "train_spa_e5.jsonl"), "[light]")

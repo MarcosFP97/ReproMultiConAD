@@ -1,9 +1,11 @@
 """
-Fine-tuning BERT estándar para clasificación binaria (HC/Dementia) o multiclase (HC/MCI/Dementia)
-sobre transcripciones conversacionales en inglés o español.
+Standard BERT fine-tuning for binary classification (HC/Dementia) or
+multiclass classification (HC/MCI/Dementia) on conversational transcripts
+in English or Spanish.
 
-Basado en el loop de entrenamiento manual con DataLoaders (no usa HuggingFace Trainer).
-Para la versión con pérdida ponderada y Trainer, ver BERT_balanced.py.
+Based on a manual training loop with DataLoaders (does not use the
+HuggingFace Trainer).
+
 """
 import os
 import argparse
@@ -21,9 +23,9 @@ from torch.optim import AdamW
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
-parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
-parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
+parser = argparse.ArgumentParser()
+parser.add_argument("--language", type=str, required=True, help="(en o spa)")
+parser.add_argument("--task", type=str, required=True, help="binary or multiclass")
 args = parser.parse_args()
 
 language = args.language
@@ -33,13 +35,11 @@ MODEL_BY_LANGUAGE = {
     "en": "bert-base-uncased",
     "spa": "dccuchile/bert-base-spanish-wwm-cased",
 }
-if language not in MODEL_BY_LANGUAGE:
-    raise ValueError(f"Idioma no soportado: {language}. Usa 'en' o 'spa'.")
 
 MODEL_NAME = MODEL_BY_LANGUAGE[language]
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/train_{language}_e5.jsonl"
-TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/test_{language}_e5.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_len256"
+TRAIN_PATH = f"./train_{language}_e5.jsonl"
+TEST_PATH  = f"./test_{language}_e5.jsonl"
+OUTPUT_DIR = f"./BERT_Models/bert_{language}_{task}_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
@@ -59,12 +59,17 @@ VERBOSE = True
 
 class ClassificationDataset(Dataset):
     """
-    Representación de cada ejemplo:
-      - Texto (string)
-      - Etiqueta (int)
-      - tokenizer(...) produce:
-          input_ids:      tensor [max_len]
-          attention_mask: tensor [max_len]
+    Representation of each example:
+
+    - Text (string)
+
+    - Label (int)
+
+    - tokenizer(...) produces:
+
+        input_ids:      tensor [max_len]
+
+        attention_mask: tensor [max_len]
     """
     def __init__(self, texts, labels, tokenizer, max_len):
         self.texts = list(texts)
@@ -88,7 +93,6 @@ class ClassificationDataset(Dataset):
             return_tensors="pt",
         )
 
-        # encoding["input_ids"] tiene shape [1, max_len] -> quitamos la dimensión 0
         return {
             "input_ids": encoding["input_ids"].squeeze(0),
             "attention_mask": encoding["attention_mask"].squeeze(0),
@@ -113,36 +117,36 @@ def load_and_prepare_df(path, text_col, label_col, drop_label_value=None):
 
 def encode_labels_fit(df, label_col):
     """
-    Ajusta LabelEncoder con train y crea columna df['label'] con ints.
+    Fits the LabelEncoder on train data and creates a df['label'] column with integer values.
     """
     le = LabelEncoder()
     df = df.copy()
     df["label"] = le.fit_transform(df[label_col])
 
     if VERBOSE:
-        print("\n[LABEL ENCODING] classes_ (orden -> id):")
+        print("\n[LABEL ENCODING] classes_ (order -> id):")
         for i, c in enumerate(le.classes_):
             print(f"  {i} -> {c}")
 
-        print("\n[LABEL ENCODING] distribución en train_df (por nombre):")
+        print("\n[LABEL ENCODING] distribution in train_df (by name):")
         print(df[label_col].value_counts())
 
-        print("\n[LABEL ENCODING] distribución en train_df (por id):")
+        print("\n[LABEL ENCODING] distribution in train_df (by id):")
         print(df["label"].value_counts().sort_index())
 
     return df, le
 
 def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     """
-    Usa el LabelEncoder del train para transformar etiquetas del test.
+    Uses the train LabelEncoder to transform the test labels.
     """
     df = df.copy()
 
     unseen = set(df[label_col].unique()) - set(label_encoder.classes_)
     if unseen:
         raise ValueError(
-            f"Etiquetas en TEST que no existen en TRAIN: {unseen}. "
-            "Asegúrate de que train tenga todas las clases."
+            f"Labels in TEST that do not exist in TRAIN: {unseen}. "
+            "Make sure train contains all classes."
         )
 
     df["label"] = label_encoder.transform(df[label_col])
@@ -150,8 +154,8 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
 
 def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
     """
-    Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
-    stratify mantiene proporciones de clase.
+    Splits the training set into train/val to monitor learning during fine-tuning.
+    stratify preserves class proportions.
     """
     train_texts, val_texts, train_labels, val_labels = train_test_split(
         df[text_col].values,
@@ -310,10 +314,10 @@ def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: 
 
 def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta: dict,) -> pd.DataFrame:
     """
-    Devuelve un DF de 1 fila con:
-    - metadatos del experimento
+    Returns a 1-row DataFrame with:
+    - experiment metadata
     - accuracy, macro/weighted precision/recall/f1
-    - métricas por clase (precision/recall/f1/support)
+    - per-class metrics (precision/recall/f1/support)
     """
     report = classification_report(
         y_true, y_pred,
@@ -345,9 +349,9 @@ def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta:
 def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list,y_pred: list,class_names: list):
     """
     Excel:
-      - summary: 1 fila con métricas + metadatos
-      - confusion_matrix: matriz con labels
-      - top_errors: (opcional) errores más confiados
+      - summary: 1 row with metrics + metadata
+      - confusion_matrix: matrix with labels
+      - top_errors: (optional) most confident errors
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -418,7 +422,7 @@ def main():
 
     id2label = {i: c for i, c in enumerate(label_encoder.classes_)}
 
-    # reconstruimos los textos en el mismo orden que el test_loader
+    # reconstruct the texts in the same order as the test_loader
     test_texts = test_df[TEXT_COL].values.tolist()
 
     rows = []
@@ -442,7 +446,7 @@ def main():
     pred_df = pd.DataFrame(rows)
     pred_df["correct"] = pred_df["true_id"] == pred_df["pred_id"]
     
-    results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/"
+    results_dir = "./results/"
     os.makedirs(results_dir, exist_ok=True)
 
     trunc_pct = compute_truncation_pct(train_df, tokenizer, TEXT_COL, MAX_LEN)
@@ -483,7 +487,7 @@ def main():
     n_wrong = int((~pred_df["correct"]).sum())
     print(f"\n[ERRORS] Wrong predictions: {n_wrong}/{n_total} ({(n_wrong/n_total)*100:.2f}%)")
 
-    # muestra los 20 fallos más “seguros” (alta confianza pero equivocado)
+    # show the 20 most "confident" mistakes (high confidence but wrong)
     wrong_df = pred_df[~pred_df["correct"]].sort_values("confidence", ascending=False)
 
     print("\n[ERRORS] Top 20 most confident WRONG examples:")

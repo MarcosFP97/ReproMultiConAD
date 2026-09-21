@@ -28,7 +28,7 @@ class ASRCollection(Collection):
             for item in data_point:
                 file_id = item.get("file_name", "Unknown")
 
-                # --- base info (igual que antes) ---
+                # --- base info (same as before) ---
                 info = {
                     "age": "Unknown",
                     "gender": "Unknown",
@@ -56,15 +56,6 @@ class ASRCollection(Collection):
                     "text_interviewer": [],
                     "text_interviewer_participant": item.get("transcription", []),
                 }
-
-                # --- ENRICHER TAUKADIAL ---
-                if file_id in self.metadata:
-                    meta = self.metadata[file_id]
-
-                    info["age"] = meta.get("Age", "Unknown")
-                    info["gender"] = meta.get("Gender", "Unknown")
-                    info["MMSE"] = meta.get("MMSE", "Unknown")
-                    info["Diagnosis"] = meta.get("Diagnosis", "Unknown")
 
                 yield info
 
@@ -102,7 +93,7 @@ class ASRCollection(Collection):
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
 
-DEFAULT_OUTPUT_DIR = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/results_cha_collection"
+DEFAULT_OUTPUT_DIR = "./jsonl/results_cha_collection"
 
 
 def build_metadata_loader(split: str):

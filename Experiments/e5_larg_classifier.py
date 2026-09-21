@@ -1,10 +1,13 @@
 """
-Clasificador con embeddings multilingual-E5-large + cabezas ML clásicas (pipeline global).
+Classifier based on multilingual-E5-large embeddings with classical ML models
+(global pipeline).
 
-Codifica las transcripciones con intfloat/multilingual-e5-large y aplica GridSearchCV
-sobre Decision Tree, Random Forest, SVM y Logistic Regression. Soporta entrenamiento
-monolingüe en inglés o español y clasificación binaria (sin MCI) o multiclase.
+Encodes transcripts using intfloat/multilingual-e5-large and applies GridSearchCV
+over Decision Tree, Random Forest, SVM, and Logistic Regression. Supports
+monolingual training in English or Spanish, as well as binary classification
+(excluding MCI) and multiclass classification.
 """
+
 import os
 import sys
 import pandas as pd
@@ -27,7 +30,7 @@ parser.add_argument('--task', required=True)
 
 args_slurm = parser.parse_args()
 
-path_to_data_folder = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/"
+path_to_data_folder = "./jsonl/"
 train_en = pd.read_json(path_to_data_folder + "train_en_e5.jsonl", lines=True)
 test_en = pd.read_json(path_to_data_folder + "test_en_e5.jsonl", lines=True)
 
@@ -52,11 +55,15 @@ test_dfs = {
 
 def _get_confidence(estimator, X):
     """
-    Devuelve un score de confianza por ejemplo.
-    - Si hay predict_proba: max(probabilidades)
-    - Si hay decision_function:
-        * binario: |score|
-        * multiclase: margen top1-top2
+    Returns a confidence score for each example.
+
+    - If predict_proba is available: max(probabilities)
+
+    - If decision_function is available:
+
+        * binary: |score|
+
+        * multiclass: top1-top2 margin
     """
     if hasattr(estimator, "predict_proba"):
         proba = estimator.predict_proba(X)
@@ -74,7 +81,7 @@ def _get_confidence(estimator, X):
 def extract_embeddings(df, text_column, label_column):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = SentenceTransformer('intfloat/multilingual-e5-large').to(device)
-    # El prefijo "passage: " es obligatorio para E5: sin él, el modelo genera embeddings degradados.
+    # The "passage: " prefix is required for E5; without it, the model produces degraded embeddings.
     texts = ["passage: " + text for text in df[text_column].tolist()]
     labels = df[label_column].tolist()
     embeddings = model.encode(texts, normalize_embeddings=True,device=device)
@@ -102,7 +109,6 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
     X_test_text = test_df["Text_interviewer_participant"].astype(str)
     X_test, y_test = extract_embeddings(test_df, 'Text_interviewer_participant', 'Diagnosis')
     
-    # Para guardar los resultados en un excel
     results = []
     
     # Define classifiers and their hyperparameters for grid search
@@ -135,7 +141,6 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
         else:
             eval_df["conf"] = conf
 
-        # snippet corto para que no explote el log
         eval_df["text_snip"] = (
             eval_df["_text"]
             .astype(str)
@@ -144,22 +149,19 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
             .str.slice(0, 220)
         )
 
-        # ---- Resumen de aciertos/fallos
         n_total = len(eval_df)
         n_ok = int(eval_df["correct"].sum())
         n_bad = n_total - n_ok
         print("--------------------------------------------------")
-        print(f"[{name}] Resumen ejemplos")
-        print(f"Total: {n_total} | Aciertos: {n_ok} | Fallos: {n_bad}")
-        print("Aciertos por clase (y_true):")
+        print(f"[{name}] Example summary")
+        print(f"Total: {n_total} | Correct: {n_ok} | Incorrect: {n_bad}")
+        print("Correct predictions by class (y_true):")
         print(eval_df.loc[eval_df["correct"], "y_true"].value_counts())
-        print("Fallos por clase (y_true):")
+        print("Incorrect predictions by class (y_true):")
         print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
 
-        # ---- Matriz de confusión (orden fijo: HC, MCI, Dementia) ----
         desired_order = ["HC", "MCI", "Dementia"]
 
-        # Nos quedamos solo con las clases que realmente existen en este experimento
         labels_order = [c for c in desired_order if c in grid_search.classes_]
 
         cm = confusion_matrix(
@@ -174,10 +176,9 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
             columns=[f"pred_{l}" for l in labels_order]
         )
 
-        print("\nMatriz de confusión (HC-MCI-Dementia):")
+        print("\nConfusion Matrix (HC-MCI-Dementia):")
         print(cm_df)
 
-        # Confusiones más frecuentes (true != pred)
         confusions = []
         for i, tl in enumerate(labels_order):
             for j, pl in enumerate(labels_order):
@@ -185,11 +186,9 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
                     confusions.append((cm[i, j], tl, pl))
         confusions.sort(reverse=True, key=lambda x: x[0])
         if confusions:
-            print("\nTop confusiones (count, true -> pred):")
             for c, tl, pl in confusions[:10]:
                 print(f"  {c:>4}  {tl} -> {pl}")
 
-        # ---- Columnas útiles para imprimir (si existen IDs en tu dataset)
         id_candidates = ["ID", "Participant_ID", "participant_id", "Interview_ID", "File", "file"]
         id_cols = [c for c in id_candidates if c in eval_df.columns]
         show_cols = id_cols + ["conf", "y_true", "y_pred", "text_snip"]
@@ -197,24 +196,21 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
         def _print_block(df, title, n=20):
             print(f"\n{title}")
             if len(df) == 0:
-                print("  (vacío)")
+                print("  (empty)")
                 return
             n = min(n, len(df))
             print(df[show_cols].head(n).to_string(index=False))
 
-        # ---- 20 MEJORES: aciertos con más confianza
         best_correct = eval_df[eval_df["correct"]].copy()
         if best_correct["conf"].notna().any():
             best_correct = best_correct.sort_values("conf", ascending=False)
-        _print_block(best_correct, "20 MEJORES (aciertos más seguros):", n=20)
+        _print_block(best_correct, "20 best (more confidence):", n=20)
 
-        # ---- 20 PEORES: fallos con más confianza
         worst_wrong = eval_df[~eval_df["correct"]].copy()
         if worst_wrong["conf"].notna().any():
             worst_wrong = worst_wrong.sort_values("conf", ascending=False)
-        _print_block(worst_wrong, "20 PEORES (fallos con más confianza):", n=20)
+        _print_block(worst_wrong, "20 worst (fails with more confidence):", n=20)
 
-        # -------------- GUARDAMOS DATOS ----------------
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
 
         metrics_dict = {
@@ -226,9 +222,7 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
             "Representation": "e5-large"
         }
 
-        # ---- Métricas por clase (incluye MCI si existe) ----
-        class_labels = list(grid_search.classes_)  # clases vistas en training
-
+        class_labels = list(grid_search.classes_)  
         for label in class_labels:
             if label in report and isinstance(report[label], dict):
                 metrics_dict[f"{label}_precision"] = report[label]["precision"]
@@ -236,7 +230,6 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
                 metrics_dict[f"{label}_f1"] = report[label]["f1-score"]
                 metrics_dict[f"{label}_support"] = report[label]["support"]
             else:
-                # Por si alguna clase no aparece en report (raro, pero mejor prevenir)
                 metrics_dict[f"{label}_precision"] = np.nan
                 metrics_dict[f"{label}_recall"] = np.nan
                 metrics_dict[f"{label}_f1"] = np.nan
@@ -263,13 +256,12 @@ def classify_language_dataset_e5(train_dfs, test_dfs, test_language, random_stat
         print(classification_report(y_test, y_pred, zero_division=0))
         print("\n")
 
-    # ------------------ GUARDAMOS DATOS ------------------
-    results_path = f"/mnt/beegfs/groups/irgroup/sara_tfg/results/E5_{test_language}_{task}.xlsx"
+    results_path = f"./E5_{test_language}_{task}.xlsx"
 
     final_df = pd.DataFrame(results)
     final_df.to_excel(results_path, index=False)
 
-    print(f"Resultados guardados en: {results_path}")
+    print(f"Results saved in: {results_path}")
     # -----------------------------------------------------
 
     print("test dataset: ", test_language)

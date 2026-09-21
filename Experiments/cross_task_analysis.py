@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 
 
-DEFAULT_RESULTS_DIR = Path("/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_synthetic_analysis")
-DEFAULT_OUTPUT_DIR = Path("/mnt/beegfs/groups/irgroup/sara_tfg/results/cross_task_analysis")
+DEFAULT_RESULTS_DIR = Path("./results/BERT_synthetic_analysis")
+DEFAULT_OUTPUT_DIR = Path("./results/cross_task_analysis")
 DEFAULT_PATTERN = "bert_balanced_cross_task_binary_disease_status_train-pitt_full_test-*.xlsx"
 METRICS = ["Accuracy", "Macro_f1", "Disease_recall", "NoDisease_recall"]
 POSITIVE_LABEL = "Disease"

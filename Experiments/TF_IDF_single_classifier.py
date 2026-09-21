@@ -1,9 +1,13 @@
 """
-Clasificador TF-IDF por dataset individual (pipeline individual).
+TF-IDF classifier for individual datasets (individual pipeline).
 
-Binario: HC vs Enfermo (MCI + Dementia agrupados), consistente con el experimento cross-dataset.
-Multiclase: HC / MCI / Dementia (solo para datasets con las 3 clases: Pitt e Ivanova).
+Binary classification: HC vs. Impaired (MCI + Dementia grouped), consistent
+with the cross-dataset experiment.
+
+Multiclass classification: HC / MCI / Dementia (only for datasets containing
+all three classes: Pitt and Ivanova).
 """
+
 import os
 import sys
 import pandas as pd
@@ -26,32 +30,27 @@ import argparse
 LABEL = "Text_interviewer_participant"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset", required=True, help="Nombre del dataset (ej: Pitt, Lu, Baycrest, Delaware, taukadial, ivanova)")
-parser.add_argument("--balanced", action="store_true", help="Usar class_weight='balanced' en los clasificadores")
-parser.add_argument("--task", default="binary", choices=["binary", "multiclass"], help="Tarea de clasificación")
+parser.add_argument("--dataset", required=True, help="e.g.: Pitt, Lu, Baycrest, Delaware, taukadial, ivanova")
+parser.add_argument("--task", default="binary", choices=["binary", "multiclass"])
 parser.add_argument(
     "--data-dir",
-    default="/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/TFIDF",
-    help="Carpeta que contiene train_<dataset>.jsonl y test_<dataset>.jsonl",
+    default="./individual_sets/TFIDF"
 )
 parser.add_argument(
     "--results-dir",
-    default="/mnt/beegfs/groups/irgroup/sara_tfg/results",
-    help="Carpeta de salida para los Excel",
+    default="./results"
 )
 parser.add_argument(
     "--log-dir",
-    default="/mnt/beegfs/groups/irgroup/sara_tfg/logs",
-    help="Carpeta de salida para los logs",
+    default="./logs",
 )
 args = parser.parse_args()
 
 DATASET = args.dataset.strip()
 DATASET_LOWER = DATASET.lower()
-BALANCED = args.balanced
 TASK = args.task
-balance_tag = "balanced" if BALANCED else "unbalanced"
-class_weight = "balanced" if BALANCED else None
+balance_tag = "balanced" 
+class_weight = "balanced" 
 
 data_dir = args.data_dir
 train_path = os.path.join(data_dir, f"train_{DATASET_LOWER}.jsonl")
@@ -59,8 +58,7 @@ test_path = os.path.join(data_dir, f"test_{DATASET_LOWER}.jsonl")
 
 if not os.path.exists(train_path) or not os.path.exists(test_path):
     raise FileNotFoundError(
-        f"No encuentro los ficheros:\n  {train_path}\n  {test_path}\n"
-        "Revisa el nombre del dataset y cómo lo guardaste."
+        f"Files not found:\n  {train_path}\n  {test_path}\n"
     )
 
 train_df = pd.read_json(train_path, lines=True)
@@ -76,16 +74,10 @@ if TASK == "binary":
     positive_label = "Enfermo"
 else:
     keep = {"HC", "MCI", "Dementia"}
-    positive_label = "Dementia"  # no usado en multiclass
+    positive_label = "Dementia"  
 
 train_df = train_df[train_df["Diagnosis"].isin(keep)].copy()
 test_df  = test_df[test_df["Diagnosis"].isin(keep)].copy()
-
-if len(train_df) == 0 or len(test_df) == 0:
-    raise ValueError(
-        f"Tras filtrar clases {keep}, te quedaste con train={len(train_df)} / test={len(test_df)}.\n"
-        "Revisa que ese dataset realmente tenga esas clases."
-    )
 
 def _get_confidence(estimator, X):
     if hasattr(estimator, "predict_proba"):
@@ -113,13 +105,11 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         "Random Forest": (RandomForestClassifier(random_state=random_state, class_weight=class_weight), {"n_estimators": [50, 100, 200]}),
         "Naive Bayes": (MultinomialNB(), {"alpha": [0.5, 1.0, 1.5]}),
         "SVM": (SVC(random_state=random_state, class_weight=class_weight), {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"]}),
-        # subo max_iter para evitar warnings de convergencia
         "Logistic Regression": (LogisticRegression(random_state=random_state, max_iter=2000, class_weight=class_weight), {"C": [0.1, 1, 10]}),
     }
 
     results = []
     
-    # StratifiedKFold preserva la proporción de clases en cada fold; crítico para los datasets clínicos desbalanceados.
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
 
     for name, (clf, params) in classifiers.items():
@@ -153,9 +143,9 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         print("--------------------------------------------------")
         print(f"[{name}] Dataset={DATASET} | Binary: HC vs {positive_label}")
         print(f"Total: {n_total} | Aciertos: {n_ok} | Fallos: {n_bad}")
-        print("Aciertos por clase (y_true):")
+        print("Hits per class(y_true):")
         print(eval_df.loc[eval_df["correct"], "y_true"].value_counts())
-        print("Fallos por clase (y_true):")
+        print("Fails per class (y_true):")
         print(eval_df.loc[~eval_df["correct"], "y_true"].value_counts())
 
         labels_order = ["HC", positive_label]
@@ -165,7 +155,7 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
             index=[f"true_{l}" for l in labels_order],
             columns=[f"pred_{l}" for l in labels_order],
         )
-        print("\nMatriz de confusión (HC primero):")
+        print("\n Confusion matrix (HC first):")
         print(cm_df)
 
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
@@ -173,7 +163,6 @@ def run_tfidf_binary(train_df, test_df, random_state=42):
         metrics_dict = {
             "Dataset": DATASET,
             "Binary_Positive": positive_label,
-            "Balanced": BALANCED,
             "Classifier": name,
             "Best Params": str(grid_search.best_params_),
             "Accuracy": report["accuracy"],
@@ -248,7 +237,7 @@ def run_tfidf_multiclass(train_df, test_df, random_state=42):
             index=[f"true_{l}" for l in labels_present],
             columns=[f"pred_{l}" for l in labels_present],
         )
-        print("\nMatriz de confusión:")
+        print("\nConfusion matrix:")
         print(cm_df)
 
         report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
@@ -256,7 +245,6 @@ def run_tfidf_multiclass(train_df, test_df, random_state=42):
         metrics_dict = {
             "Dataset": DATASET,
             "Task": "multiclass",
-            "Balanced": BALANCED,
             "Classifier": name,
             "Best Params": str(grid_search.best_params_),
             "Accuracy": report["accuracy"],
@@ -299,7 +287,7 @@ sys.stderr = sys.stdout
 
 print(f"Logging en: {log_path}")
 task_desc = f"Binary: HC vs {positive_label}" if TASK == "binary" else "Multiclass: HC / MCI / Dementia"
-print(f"Dataset: {DATASET} | {task_desc} | Balanced: {BALANCED}")
+print(f"Dataset: {DATASET} | {task_desc}")
 print(f"Train: {train_path}")
 print(f"Test : {test_path}\n")
 
@@ -314,6 +302,6 @@ os.makedirs(results_dir, exist_ok=True)
 results_path = os.path.join(results_dir, f"TFIDF_{DATASET}_{balance_tag}_{TASK}.xlsx")
 final_df.to_excel(results_path, index=False)
 
-print(f"\nResultados guardados en: {results_path}")
+print(f"\nResults saved in: {results_path}")
 
 sys.stdout.close()

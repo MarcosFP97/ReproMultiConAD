@@ -8,23 +8,23 @@ from typing import Any, Dict, Iterable
 
 
 # ============================================================
-# CONFIG FIJA
+# FIXED CONFIGURATION
 # ============================================================
-DATA_ROOT = "/mnt/beegfs/groups/irgroup/sara_tfg/jsonl"
+DATA_ROOT = "./jsonl"
 
 TEXT_FIELD = "Text_interviewer_participant"
 
-# Campos a eliminar (si existen)
+# Fields to remove (if present)
 DROP_FIELDS = ["Text_participant", "Text_interviewer"]
 
-# Si un marcador NO está activo en el modo elegido:
-# - True: lo elimina (recomendado para aislar señal)
-# - False: lo deja como estaba
+# If a marker is NOT active in the selected mode:
+# - True: remove it (recommended to isolate the signal)
+# - False: leave it unchanged
 DROP_INACTIVE_MARKERS = True
 
 
 # =========================
-# TOKENS DE SALIDA
+# OUTPUT TOKENS
 # =========================
 PAUSE_TOKEN = "[PAUSE]"
 REP_TOKEN   = "[REP]"
@@ -32,12 +32,12 @@ REF_TOKEN   = "[REF]"
 
 
 # =========================
-# REGEX DE MARCAS
+# MARKER REGEX
 # =========================
 RE_PAUSE_ANY = re.compile(r"\(\s*(?:\.\s*|\.\.\s*|\.\.\.\s*|\d+(?:\.\d+)?)\s*\)")
-# acepta "/" o "\/" dentro de los corchetes
+# Accepts "/" or "\/" inside the brackets
 RE_REP = re.compile(r"\[\s*(?:/|\\/)\s*\]")
-# acepta "//" o "\/\/" dentro de los corchetes
+# Accepts "//" or "\/\/" inside the brackets
 RE_REF = re.compile(r"\[\s*(?:(?:/|\\/)\s*(?:/|\\/))\s*\]")
 
 
@@ -72,7 +72,7 @@ def preprocess_text(text: Any, mode: str) -> str:
     elif DROP_INACTIVE_MARKERS:
         t = RE_PAUSE_ANY.sub(" ", t)
 
-    # normaliza espacios
+    # normalize spaces
     return re.sub(r"\s+", " ", t).strip()
 
 

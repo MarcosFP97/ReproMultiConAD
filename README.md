@@ -34,19 +34,47 @@ This paper restricts the study to **English and Spanish**, incorporating Transfo
 | VAS                 | English  | Various               | HC, MCI           |
 | WLS                 | English  | Various               | HC, Dementia      |
 | Ivanova             | Spanish  | Reading (Don Quixote) | HC, MCI, Dementia |
+| PerLA               | Spanish  | Various               | Dementia          |
 
 
-The normalized data follow the `NormalizedDataPoint` schema in JSONL format:
+
+The original datasets are not distributed in this repository. Access to the DementiaBank data is restricted and must be requested through DementiaBank/TalkBank. Researchers should follow the [official data access instructions](https://talkbank.org/dementia/access/) to **request access** and comply with the applicable data-use requirements.
+
+All scripts required to extract the data (including parsing and normalization to JSONL) are located under the `Extracting_data/` directory. The scripts required for subsequent text preprocessing can be found under the `Preprocessing_text/` directory.
+
+After running these scripts, the data will be stored in JSONL format following the `NormalizedDataPoint` schema:
 
 ```json
 {
-  "PID": "...", "Dataset": "Pitt", "Diagnosis": "Dementia",
-  "Age": 75, "Gender": "F", "MMSE": 21,
+  "PID": "...",
+  "Dataset": "Pitt",
+  "Diagnosis": "Dementia",
+  "Age": 75,
+  "Gender": "F",
+  "MMSE": 21,
   "Text_participant": "PAR: ..."
 }
 ```
 
-The original datasets are not distributed in this repository. Access to the DementiaBank data is restricted and must be requested through DementiaBank/TalkBank. Researchers should follow the [official data access instructions](https://talkbank.org/dementia/access/) to **request access** and comply with the applicable data-use requirements.
+**Note** that the Taukadial dataset provides audio recordings rather than transcribed text. Therefore, the recordings must first be transcribed using the scripts provided under `Audio_transcription/`.
+
+Finally, the `scripts/datasets_creation/ directory contains an example of how to run these processing steps sequentially.
+
+---
+
+## Project Structure
+
+```
+ReproMultiConAD/
+├── audio_transcription/       # Automatic audio transcription (necessary for working with Taukadial)
+├── data_augmentation/         # Synthetic data generation with Gemini and Mistral
+├── experiments/               # Classifiers: TF-IDF, E5, BERT
+├── extracting_data/           # Parsing and normalization of CHAT files
+├── preprocessing_text/        # Text cleaning and conversion of CHAT markers
+├── scripts/
+│   ├── datasets_creation/     # Parsing, cleaning, and JSONL creation
+├── environment.yml            # Conda environment dependencies
+```
 
 ---
 
@@ -76,187 +104,127 @@ experiments/BERT_balanced.py   ← Training with real + synthetic data + cross-d
 
 ---
 
-## Train/test splits
+## Experiments
 
-Aquí hablar de los oficiales de MultiConAD. División para experimentos individuales. Poner hiperparams. 
-
-## Experimentos
-
-| # | Experimento | Script principal |
+| # | Experiment | Main script |
 |---|---|---|
 | 1 | Baselines TF-IDF (SVM, RF, NB, DT, LR) | `experiments/TF_IDF_classifier.py` |
-| 2 | Embeddings densos E5 | `experiments/e5_larg_classifier.py` |
-| 3 | BERT ajuste fino | `experiments/BERT_classification.py` |
-| 4 | BERT con marcas CHAT (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
-| 6 | TF-IDF por dataset individual (balanceado/no balanceado) | `experiments/TF_IDF_single_classifier.py` |
-| 7 | BERT balanceado: individual, cross-dataset y sintético | `experiments/BERT_balanced.py` |
-| 8 | Generación sintética (0–100 % datos reales) | `data_augmentation/generacion_sintetica_*.py` |
-| 9 | Análisis cross-dataset final | `experiments/cross_task_analysis.py` |
-
-### Marcas CHAT como tokens especiales
-
-| Fenómeno | Notación original | Token |
-|---|---|---|
-| Pausas | `(.)`, `(..)`, `(1.2)` | `[PAUSE]` |
-| Repeticiones | `[/]` | `[REP]` |
-| Reformulaciones | `[//]` | `[REF]` |
-
-El argumento `--mode` controla qué tokens se activan: `pause`, `rep`, `ref`, `all` o `none` (sin marcadores, referencia controlada). El análisis SHAP guarda los HTML y los Excel agregados en `results/BERT_tokenizer/`. En español solo se analiza `[REP]`, ya que Ivanova no ofrece cobertura útil de pausas o reformulaciones.
-
-### Aumento sintético
-
-La generación se condiciona con diagnóstico, edad, género, MMSE y ejemplos reales, evaluando proporciones de datos reales del 0 % al 100 %:
-
-```
-0% · 20% · 40% · 60% · 80% · 100%
-```
-
-Modelos disponibles: **Gemini 2.5 Flash** (API, con imagen Cookie Theft en Pitt) y **Mistral Small 3.2** (local vía Ollama).
-
-PONER PROMPT
-
-### Transferencia cross-dataset
-
-`experiments/BERT_balanced.py --mode cross` entrena en Pitt y evalúa directamente sobre WLS y Taukadial sin ajuste adicional. `experiments/cross_task_analysis.py` genera las tablas y figuras comparativas del análisis.
+| 2 | Dense embeddings E5                    | `experiments/e5_larg_classifier.py` |
+| 3 | TF-IDF por dataset individual (balanceado/no balanceado) | `experiments/TF_IDF_single_classifier.py` |
+| 4 | BERT fine-tuning | `experiments/BERT_classification.py` |
+| 5 | BERT with CHAT tokens (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
+| 6 | BERT cross-dataset and synthetic | `experiments/BERT_beyond.py` |
+| 7 | Synthetic generation (0–100 % real data) | `data_augmentation/syn_gen_*.py` |
+| 8 | Cross-dataset analysis | `experiments/cross_task_analysis.py` |
 
 ---
-
-## Estructura del repositorio
-
-```
-ConvoCognition/
-├── audio_transcription/       # Transcripción automática de audio (Taukadial)
-├── data_augmentation/         # Generación sintética con Gemini y Mistral
-├── experiments/               # Clasificadores: TF-IDF, E5, BERT, SHAP
-├── extracting_data/           # Parseo y normalización de ficheros CHAT
-├── markers_analysis/          # Análisis de pausas, repeticiones y reformulaciones
-├── metadata_integration/      # Loaders y Enrichers por dataset
-├── preprocessing_text/        # Limpieza textual y conversión de marcas CHAT
-├── scripts/
-│   ├── datasets_creation/     # Parseo, limpieza y creación de JSONL
-│   └── experimental_pipeline/ # Scripts SLURM numerados (00–11)
-├── environment.yml            # Dependencias del entorno Conda
-└── infer_bert_patient.py      # Evaluación cross-dataset sobre todos los corpus
-```
-
-Los scripts SLURM están separados por propósito:
-
-- `scripts/datasets_creation/`: transcripción, parseo `.cha`, limpieza y variantes con marcas CHAT.
-- `scripts/experimental_pipeline/`: experimentos numerados (`01a`, `01b`, …). El sufijo `a` corresponde a inglés y `b` a español.
-
----
-
-## Configuración del entorno
 
 ### Instalación
 
 ```bash
-git clone https://github.com/Saracas-Code/ConvoCognition.git
-cd ConvoCognition
+git clone URL_TO_REPO
+cd ReproMultiConAD
 conda env create -f environment.yml
-conda activate sara_tfg
+conda activate repro_multi
 ```
 
-### Generación con Gemini
+## Running Locally
 
-Crear un fichero `.env` en la raíz del repositorio:
-
-```
-GEMINI_API_KEY=tu_clave_aqui
-```
-
-### Generación con Mistral (Ollama)
+Examples of how to run the main experiments reported in the paper:
 
 ```bash
-ollama pull mistral-small3.2
-ollama serve   # debe estar activo durante la ejecución
-```
-
----
-
-## Ejecución en HPC (SLURM)
-
-Los scripts esperan datos y modelos en:
-
-```
-/mnt/beegfs/groups/irgroup/sara_tfg/
-├── jsonl/          # Datos normalizados
-├── results/        # Resultados y métricas en .xlsx
-├── logs/           # Logs de ejecución
-└── MultiConAD/Experiments/BERT_Models/  # Checkpoints BERT
-```
-
-Lanzar un experimento:
-
-```bash
-sbatch scripts/experimental_pipeline/03a_bert_classification_english.sh
-sbatch scripts/experimental_pipeline/09a_generate_gemini_english.sh
-```
-
-Crear datasets desde cero:
-
-```bash
-sbatch scripts/datasets_creation/01_parse_cha_files.sh
-sbatch scripts/datasets_creation/02a_preprocess_english.sh
-sbatch scripts/datasets_creation/02b_preprocess_spanish.sh
-sbatch scripts/datasets_creation/03_preprocess_marker_features.sh
-```
-
----
-
-## Ejecución en local
-
-Ajustar las rutas de datos y resultados según el entorno. Ejemplos de uso habitual:
-
-```bash
-# TF-IDF combinado
+# Reproducibility of MultiConAD
 python experiments/TF_IDF_classifier.py --test_language en --task binary --translated no
+python experiments/e5_larg_classifier.py --test_language en --task multiclass
 
-# BERT ajuste fino
-python experiments/BERT_classification.py --language en --task binary
+# Performance across individual corpora
+python experiments/TF_IDF_single_classifier.py --dataset pitt --task binary
 
-# BERT con marcas CHAT
+# BERT-based models
+python experiments/BERT_classification.py --language en --task binary 
 python experiments/BERT_tokenizer.py --language en --task binary --mode ref
 
-# BERT balanceado (corpus individual)
-python experiments/BERT_balanced.py --mode individual --train-dataset pitt --task binary
+# Cross-dataset transfer
+python experiments/BERT_beyond.py --mode cross --train-dataset pitt --test-dataset wls --task binary
 
-# BERT balanceado (transferencia cross-dataset)
-python experiments/BERT_balanced.py --mode cross --train-dataset pitt --test-dataset wls --task binary
-
-# BERT balanceado (datos sintéticos)
-python experiments/BERT_balanced.py --mode synthetic --real-percentage 80 --task binary
+# Synthetic data
+python experiments/BERT_beyond.py --mode synthetic --real-percentage 80 --task binary
 
 # Generación sintética
-python data_augmentation/generacion_sintetica_gemini.py --dataset pitt --real-percentage 20
-python data_augmentation/generacion_sintetica_mistral.py --dataset pitt --real-percentage 20
-
-# Tests unitarios del parser CHAT
-python -m pytest extracting_data/test_ch_collection.py
+python data_augmentation/syn_gen_gemini.py --dataset pitt --real-percentage 20
+python data_augmentation/syn_gen_sintetica_mistral.py --dataset pitt --real-percentage 20
 ```
+---
+
+## Train/test splits
+
+For the reproduction experiments, we followed the official experimental setup provided by MultiConAD. For the individual experiments, we used the following training and test splits for each corpus. The table also reports the proportion of the majority class in the test set, providing an indication of class imbalance across corpora.
+
+| Corpus | Training Size | Test Size | Majority Class Proportion |
+|---|---:|---:|---:|
+| Delaware | 255 | 64 | 65.6% |
+| Ivanova | 285 | 72 | 54.2% |
+| Lu | 40 | 11 | 54.5% |
+| Pitt | 390 | 108 | 54.6% |
+| Taukadial | 186 | 60 | 50.0% |
+| VAS | 80 | 20 | 65.0% |
+| WLS | 1,095 | 273 | 81.0% |
+
+WLS is the most imbalanced corpus, with the majority class accounting for 81.0% of the test set.
+
+## Hyperparameters
+
+For the classical machine learning classifiers, hyperparameters were selected using 5-fold cross-validation on the training set. We evaluated the following predefined parameter grids:
+
+| Classifier | Hyperparameters |
+|---|---|
+| Decision Tree | `max_depth`: [10, 20, 30] |
+| Random Forest | `n_estimators`: [50, 100, 200] |
+| SVM | `C`: [0.1, 1, 10], `kernel`: [`linear`, `rbf`] |
+| Logistic Regression | `C`: [0.1, 1, 10] |
+
+The best hyperparameter configuration for each classifier was selected based on the cross-validation results.
+
+For BERT-based models, we used a fixed configuration across experiments to ensure consistent comparisons:
+
+| Hyperparameter | Value |
+|---|---:|
+| Maximum sequence length | 256 |
+| Batch size | 16 |
+| Learning rate | 5e-5 |
+| Number of epochs | 3 |
+
+
+### CHAT Markers as Special Tokens
+
+| Phenomenon | Original notation | Token |
+|---|---|---|
+| Pauses | `(.)`, `(..)`, `(1.2)` | `[PAUSE]` |
+| Repetitions | `[/]` | `[REP]` |
+| Reformulations | `[//]` | `[REF]` |
+
+The `--mode` argument controls which tokens are enabled: `pause`, `rep`, `ref`, `all`, or `none` (no markers, controlled reference). SHAP analysis saves the HTML files and aggregated Excel files to `results/BERT_tokenizer/`. For Spanish, only `[REP]` is analyzed, as the Ivanova dataset does not provide useful coverage of pauses or reformulations.
 
 ---
 
-## Limitaciones
+### Generation with Gemini
 
-- Los datasets son pequeños y heterogéneos; los resultados son sensibles a la partición train/test.
-- La clase MCI está subrepresentada y es la más difícil de detectar.
-- Las tareas cognitivas no son comparables entre todos los datasets.
-- Los datos sintéticos pueden introducir artefactos generativos, especialmente en corpus con tarea fija (Ivanova).
-- Los scripts SLURM contienen rutas absolutas del entorno HPC y requieren adaptación para otros sistemas.
+Create a `.env` file in the repository root:
 
----
-
-## Referencia base
-
-```bibtex
-@misc{shakeri2025multiconadunifiedmultilingualconversational,
-  title={MultiConAD: A Unified Multilingual Conversational Dataset for Early Alzheimer's Detection},
-  author={Arezo Shakeri and Mina Farmanbar and Krisztian Balog},
-  year={2025},
-  eprint={2502.19208},
-  archivePrefix={arXiv},
-  primaryClass={cs.CL},
-  url={https://arxiv.org/abs/2502.19208}
-}
 ```
+GEMINI_API_KEY=your_key_here
+```
+
+### Generation with Mistral (Ollama)
+
+```
+ollama pull mistral-small3.2
+
+ollama serve   # must be running during execution
+```
+
+**Prompts** can be found in `Data_augmentation/prompt_system.py` 
+
+#### Reference to Our Study
+
+To appear

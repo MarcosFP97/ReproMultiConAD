@@ -1,10 +1,10 @@
 """
-Transcripción ASR por lotes de datasets de audio usando OpenAI Whisper.
+Batch ASR transcription of audio datasets using OpenAI Whisper.
 
-Itera un directorio de archivos de audio, transcribe cada uno con el modelo
-Whisper indicado, filtra opcionalmente por idioma detectado y vuelca todas las
-transcripciones a un único JSON. Diseñado para ejecutarse como job SLURM
-puntual sobre los corpora clínicos, antes del preprocesado JSONL.
+Iterates over a directory of audio files, transcribes each file using the
+specified Whisper model, optionally filters the results by detected language,
+and writes all transcriptions to a single JSON file. Designed to run as a
+one-off SLURM job on clinical corpora, prior to JSONL preprocessing.
 """
 
 import argparse
@@ -46,7 +46,6 @@ def iter_audio_files(audio_dir: Path, extensions: set[str], recursive: bool):
 
 def main() -> None:
     args = parse_args()
-    # Import diferido: entornos sin dependencias GPU pueden importar el módulo sin error.
     import whisper
     from tqdm import tqdm
 

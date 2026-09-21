@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-DATA_ROOT = Path("/mnt/beegfs/groups/irgroup/sara_tfg/jsonl")
+DATA_ROOT = Path("./jsonl")
 RESULTS_DIRNAME = "results_cha_collection"
 OUTPUT_DIRNAME = "individual_sets"
 DEFAULT_DATASETS = ("pitt", "delaware", "lu", "taukadial", "vas", "wls")
@@ -167,14 +167,6 @@ def write_pair(train_df: pd.DataFrame, test_df: pd.DataFrame, output_dir: Path, 
     test_out = output_dir / f"test_{dataset}.jsonl"
     train_df.to_json(train_out, orient="records", lines=True, force_ascii=False)
     test_df.to_json(test_out, orient="records", lines=True, force_ascii=False)
-    print(f"\nGuardado {dataset}:")
-    print(" -", train_out)
-    print(" -", test_out)
-    print("Distribucion train:")
-    print(train_df["Diagnosis"].value_counts(dropna=False))
-    print("Distribucion test:")
-    print(test_df["Diagnosis"].value_counts(dropna=False))
-
 
 def write_tfidf_pair(train_df: pd.DataFrame, test_df: pd.DataFrame, output_dir: Path, dataset: str) -> None:
     write_pair(make_tfidf_df(train_df), make_tfidf_df(test_df), output_dir / "TFIDF", dataset)

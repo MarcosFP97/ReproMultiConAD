@@ -1,8 +1,8 @@
 """
-Backend Ollama para la generación de transcripciones sintéticas.
+Ollama backend for synthetic transcription generation.
 
-Traduce las opciones de generación del PromptSpec a parámetros compatibles con Ollama
-(num_predict, num_ctx, repeat_penalty) y llama a la API de chat local.
+Translates the generation options from PromptSpec to Ollama-compatible parameters
+(num_predict, num_ctx, repeat_penalty) and calls the local chat API.
 """
 
 import sys
@@ -14,7 +14,7 @@ from prompt_system import PromptSpec, prepare_prompt_payload
 
 
 def get_ollama_generation_options(spec: PromptSpec) -> dict[str, Any]:
-    """Fusiona opciones comunes y específicas de Ollama definidas en el PromptSpec."""
+    """Merges common and Ollama-specific options defined in the PromptSpec."""
     return {
         **spec.generation_options,
         **spec.ollama_generation_options,
@@ -22,7 +22,7 @@ def get_ollama_generation_options(spec: PromptSpec) -> dict[str, Any]:
 
 
 def resolve_ollama_num_predict(spec: PromptSpec, default_num_predict: int = 1024) -> int:
-    """Devuelve el presupuesto real de salida que Ollama aplicará como num_predict."""
+    """Returns the actual output budget that Ollama will apply as num_predict."""
     merged_options = get_ollama_generation_options(spec)
     raw_value = merged_options.get("max_output_tokens", merged_options.get("num_predict", default_num_predict))
     return int(raw_value)
@@ -30,10 +30,10 @@ def resolve_ollama_num_predict(spec: PromptSpec, default_num_predict: int = 1024
 
 def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: float = 1.0,base_repeat_penalty: float = 1.1,) -> dict[str, Any]:
     """
-    Construye opciones finales para Ollama:
-    - Base estable del pipeline.
-    - Overrides comunes en PromptSpec.generation_options.
-    - Overrides específicos de Ollama en PromptSpec.ollama_generation_options.
+    Builds the final options for Ollama:
+    - Stable base for the pipeline.
+    - Common overrides in PromptSpec.generation_options.
+    - Ollama-specific overrides in PromptSpec.ollama_generation_options.
     """
     options: dict[str, Any] = {
         "temperature": float(default_temperature),
@@ -41,8 +41,8 @@ def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: floa
         "num_ctx": int(num_ctx),
     }
 
-    # Mapeo semántico -> Ollama.
-    # max_output_tokens es agnóstico; en Ollama equivale a num_predict.
+    # Semantic mapping -> Ollama.
+    # max_output_tokens is generic; in Ollama it corresponds to num_predict.
     merged_options = get_ollama_generation_options(spec)
     for key, value in merged_options.items():
         target_key = "num_predict" if key == "max_output_tokens" else key
@@ -58,7 +58,7 @@ def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: floa
     if "num_predict" not in options:
         options["num_predict"] = resolve_ollama_num_predict(spec)
 
-    # Garantizamos tipos serializables en num_ctx incluso con overrides.
+    # Ensure serializable types for num_ctx even with overrides.
     options["num_ctx"] = int(options.get("num_ctx", num_ctx))
     options["num_predict"] = int(options["num_predict"])
     if "temperature" in options:
@@ -69,7 +69,7 @@ def build_ollama_options(spec: PromptSpec,num_ctx: int,default_temperature: floa
     return options
 
 
-def generar_dialogo_paciente_prompt(
+def generate_dialog_pacient_prompt(
     dataset_name: str,
     target: dict,
     vecinos: pd.DataFrame,
@@ -79,7 +79,7 @@ def generar_dialogo_paciente_prompt(
     tokenizer,
     zero_shot: bool = False,
 ) -> str | None:
-    """Construye prompt dataset-aware, llama a Ollama y devuelve el texto generado."""
+    """Builds a dataset-aware prompt, calls Ollama, and returns the generated text."""
     prompt_payload = prepare_prompt_payload(
         dataset_name=dataset_name,
         target=target,
@@ -107,7 +107,7 @@ def generar_dialogo_paciente_prompt(
     try:
         from ollama import chat
     except Exception as e:
-        sys.exit(f"No se pudo importar ollama: {e}")
+        sys.exit(f"Could not import ollama: {e}")
 
     response = chat(model=model_name, messages=messages, options=options)
     return response.message.content.strip()

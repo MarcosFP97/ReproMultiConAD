@@ -1,10 +1,10 @@
 """
-Fine-tuning BERT con tokens especiales CHAT para clasificación de deterioro cognitivo.
+Fine-tuning BERT with special CHAT tokens for cognitive impairment classification.
 
-Extiende el vocabulario BERT con tokens derivados de anotaciones CHAT: [PAUSE], [REP], [REF].
-El argumento --mode controla qué tokens se añaden; "none" no añade ninguno y
-"all" añade los tres simultáneamente.
-Para la versión sin tokens especiales, ver BERT_classification.py.
+Extends the BERT vocabulary with tokens derived from CHAT annotations: [PAUSE], [REP], [REF].
+The --mode argument controls which tokens are added; "none" adds none and
+"all" adds all three simultaneously.
+For the version without special tokens, see BERT_classification.py.
 """
 import os
 import pandas as pd
@@ -22,15 +22,15 @@ from torch.optim import AdamW
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description="Entrenamiento de BERT con conjuntos de datos en español/inglés")
-parser.add_argument("--language", type=str, required=True, help="Idioma (en o spa)")
-parser.add_argument("--task", type=str, required=True, help="Tipo de clasificación (binary o multiclass)")
+parser = argparse.ArgumentParser(description="BERT training with Spanish/English datasets")
+parser.add_argument("--language", type=str, required=True, help="Language (en or spa)")
+parser.add_argument("--task", type=str, required=True, help="Classification type (binary or multiclass)")
 parser.add_argument(
     "--mode",
     type=str,
     required=True,
     choices=["none", "pause", "rep", "ref", "all"],
-    help="Tokenizacion CHAT: none, pause, rep, ref o all.",
+    help="CHAT tokenization: none, pause, rep, ref, or all.",
 )
 args = parser.parse_args()
 
@@ -43,12 +43,12 @@ MODEL_BY_LANGUAGE = {
     "spa": "dccuchile/bert-base-spanish-wwm-cased",
 }
 if language not in MODEL_BY_LANGUAGE:
-    raise ValueError(f"Idioma no soportado: {language}. Usa 'en' o 'spa'.")
+    raise ValueError(f"Language not supported: {language}. Use 'en' or 'spa'.")
 
 MODEL_NAME = MODEL_BY_LANGUAGE[language]
-TRAIN_PATH = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/train_{language}_e5_markers_{mode}.jsonl"
-TEST_PATH  = f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/markers_collections/test_{language}_e5_markers_{mode}.jsonl"
-OUTPUT_DIR = f"/mnt/beegfs/groups/irgroup/sara_tfg/ConvoCognition/Experiments/BERT_Models/bert_{language}_{task}_{mode}_len256"
+TRAIN_PATH = f"./jsonl/markers_collections/train_{language}_e5_markers_{mode}.jsonl"
+TEST_PATH  = f"./jsonl/markers_collections/test_{language}_e5_markers_{mode}.jsonl"
+OUTPUT_DIR = f"./BERT_Models/bert_{language}_{task}_{mode}_len256"
 
 TEXT_COL  = "Text_interviewer_participant"
 LABEL_COL = "Diagnosis"
@@ -67,10 +67,10 @@ VERBOSE = True
 
 class ClassificationDataset(Dataset):
     """
-    Representación de cada ejemplo:
-      - Texto (string)
-      - Etiqueta (int)
-      - tokenizer(...) produce:
+    Representation of each example:
+      - Text (string)
+      - Label (int)
+      - tokenizer(...) produces:
           input_ids:      tensor [max_len]
           attention_mask: tensor [max_len]
     """
@@ -96,7 +96,7 @@ class ClassificationDataset(Dataset):
             return_tensors="pt",
         )
 
-        # encoding["input_ids"] tiene shape [1, max_len] -> quitamos la dimensión 0
+        # encoding["input_ids"] has shape [1, max_len] -> remove dimension 0
         return {
             "input_ids": encoding["input_ids"].squeeze(0),
             "attention_mask": encoding["attention_mask"].squeeze(0),
@@ -132,36 +132,36 @@ def format_value_counts(df: pd.DataFrame, column: str) -> str:
 
 def encode_labels_fit(df, label_col):
     """
-    Ajusta LabelEncoder con train y crea columna df['label'] con ints.
+    Fits the LabelEncoder on train data and creates a df['label'] column with integer values.
     """
     le = LabelEncoder()
     df = df.copy()
     df["label"] = le.fit_transform(df[label_col])
 
     if VERBOSE:
-        print("\n[LABEL ENCODING] classes_ (orden -> id):")
+        print("\n[LABEL ENCODING] classes_ (order -> id):")
         for i, c in enumerate(le.classes_):
             print(f"  {i} -> {c}")
 
-        print("\n[LABEL ENCODING] distribución en train_df (por nombre):")
+        print("\n[LABEL ENCODING] distribution in train_df (by name):")
         print(df[label_col].value_counts())
 
-        print("\n[LABEL ENCODING] distribución en train_df (por id):")
+        print("\n[LABEL ENCODING] distribution in train_df (by id):")
         print(df["label"].value_counts().sort_index())
 
     return df, le
 
 def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
     """
-    Usa el LabelEncoder del train para transformar etiquetas del test.
+    Uses the train LabelEncoder to transform the test labels.
     """
     df = df.copy()
 
     unseen = set(df[label_col].unique()) - set(label_encoder.classes_)
     if unseen:
         raise ValueError(
-            f"Etiquetas en TEST que no existen en TRAIN: {unseen}. "
-            "Asegúrate de que train tenga todas las clases."
+            f"Labels in TEST that do not exist in TRAIN: {unseen}. "
+            "Make sure train contains all classes."
         )
 
     df["label"] = label_encoder.transform(df[label_col])
@@ -169,8 +169,8 @@ def encode_labels_transform(df, label_col, label_encoder: LabelEncoder):
 
 def split_train_val(df, text_col, label_encoded_col="label", test_size=0.2, random_state=42):
     """
-    Divide el train en train/val para controlar el aprendizaje durante el fine-tuning.
-    stratify mantiene proporciones de clase.
+    Splits the train set into train/val to monitor learning during fine-tuning.
+    stratify preserves class proportions.
     """
     train_texts, val_texts, train_labels, val_labels = train_test_split(
         df[text_col].values,
@@ -194,11 +194,11 @@ def build_loader(texts, labels, tokenizer, max_len=128, batch_size=16, shuffle=F
     return loader
 
 def get_special_tokens_for_mode(mode: str):
-    """Devuelve los tokens CHAT a inyectar según el modo del experimento.
+    """Returns the CHAT tokens to inject based on the experiment mode.
 
-    Los marcadores CHAT ([PAUSE], [REP], [REF]) no existen en el vocabulario BERT base;
-    añadirlos como additional_special_tokens y llamar a resize_token_embeddings les
-    asigna embeddings propios en lugar de descomponerlos en subpalabras arbitrarias.
+    CHAT markers ([PAUSE], [REP], [REF]) do not exist in the base BERT vocabulary;
+    adding them as additional_special_tokens and calling resize_token_embeddings gives
+    them their own embeddings instead of splitting them into arbitrary subwords.
     """
     if mode == "none":
         return []
@@ -347,10 +347,10 @@ def compute_truncation_pct(df: pd.DataFrame, tokenizer, text_col: str, max_len: 
 
 def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta: dict,) -> pd.DataFrame:
     """
-    Devuelve un DF de 1 fila con:
-    - metadatos del experimento
+    Returns a 1-row DataFrame with:
+    - experiment metadata
     - accuracy, macro/weighted precision/recall/f1
-    - métricas por clase (precision/recall/f1/support)
+    - per-class metrics (precision/recall/f1/support)
     """
     report = classification_report(
         y_true, y_pred,
@@ -382,9 +382,9 @@ def build_experiment_row(*,y_true: list,y_pred: list,class_names: list,exp_meta:
 def save_results_excel(out_path: str,*,summary_row_df: pd.DataFrame,y_true: list,y_pred: list,class_names: list,):
     """
     Excel:
-      - summary: 1 fila con métricas + metadatos
-      - confusion_matrix: matriz con labels
-      - top_errors: (opcional) errores más confiados
+      - summary: 1 row with metrics + metadata
+      - confusion_matrix: matrix with labels
+      - top_errors: (optional) most confident errors
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -449,7 +449,7 @@ def main():
         print(f"[DEVICE] GPU: {torch.cuda.get_device_name(0)}")
 
     model = build_model(MODEL_NAME, num_labels=len(label_encoder.classes_), device=device)
-    # Sin este resize, los tokens nuevos no tienen embedding propio y el forward lanza un error de índice.
+    # Without this resize, the new tokens do not have their own embedding and the forward pass raises an index error.
     if specials:
         model.resize_token_embeddings(len(tokenizer))
     optimizer = build_optimizer(model, lr=LR)
@@ -468,7 +468,7 @@ def main():
 
     id2label = {i: c for i, c in enumerate(label_encoder.classes_)}
 
-    # reconstruimos los textos en el mismo orden que el test_loader
+    # reconstruct the texts in the same order as the test_loader
     test_texts = test_df[TEXT_COL].values.tolist()
 
     rows = []
@@ -492,7 +492,7 @@ def main():
     pred_df = pd.DataFrame(rows)
     pred_df["correct"] = pred_df["true_id"] == pred_df["pred_id"]
     
-    results_dir = "/mnt/beegfs/groups/irgroup/sara_tfg/results/BERT_tokenizer"
+    results_dir = "./results/BERT_tokenizer"
     os.makedirs(results_dir, exist_ok=True)
 
     trunc_pct = compute_truncation_pct(train_df, tokenizer, TEXT_COL, MAX_LEN)

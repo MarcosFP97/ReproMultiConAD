@@ -1,13 +1,13 @@
 """
-Pipeline de generación de transcripciones sintéticas mediante la API de Gemini.
+Pipeline for generating synthetic transcripts via the Gemini API.
 
-Tres modos controlados por --real-percentage:
-  0    → zero-shot: genera synthetic100 sin usar ejemplos reales como contexto.
-  1-99 → low-resource: complementa la fracción real con datos sintéticos hasta llegar a paridad.
-  100  → full-real: no genera nada y termina.
+Three modes controlled by --real-percentage:
+  0    → zero-shot: generates synthetic100 without using real examples as context.
+  1-99 → low-resource: complements the real fraction with synthetic data until parity is reached.
+  100  → full-real: generates nothing and exits.
 
-La escritura es incremental (flush tras cada muestra) para no perder muestras válidas
-si el job SLURM es interrumpido.
+Writing is incremental (flush after each sample) to avoid losing valid samples if the
+SLURM job is interrupted.
 """
 
 import argparse
@@ -28,7 +28,7 @@ from prompt_system import (
     validate_generated_text,
     self_check_prompt_specs,
 )
-from gemini_backend import generar_dialogo_paciente_prompt, load_cookie_theft_image_inline
+from gemini_backend import generate_dialog_pacient_prompt, load_cookie_theft_image_inline
 
 
 logging.getLogger("transformers").setLevel(logging.ERROR)
@@ -39,7 +39,7 @@ parser.add_argument(
     '--real-percentage',
     dest='real_percentage',
     type=int,
-    help="Porcentaje de datos reales usados como base (ej: 0, 20, 40, 60, 80, 100)",
+    help="Percentage of real data used as the base (e.g., 0, 20, 40, 60, 80, 100)",
 )
 parser.add_argument('--slice', dest='real_percentage', type=int, help=argparse.SUPPRESS)
 parser.add_argument('--self_check', action='store_true')
@@ -47,8 +47,8 @@ parser.add_argument('--augmented', action='store_true', help=argparse.SUPPRESS)
 parser.add_argument(
     '--cookie_image',
     type=Path,
-    default=Path("/mnt/beegfs/groups/irgroup/sara_tfg/assets/cookie-theft-picture.ppm"),
-    help="Ruta local de la imagen Cookie Theft Picture",
+    default=Path("./assets/cookie-theft-picture.ppm"),
+    help="Local path to the Cookie Theft Picture image",
 )
 args_slurm = parser.parse_args()
 dataset = args_slurm.dataset.lower()
@@ -57,24 +57,24 @@ real_pct = args_slurm.real_percentage
 load_dotenv()
 
 if real_pct is None:
-    parser.error("--real-percentage es obligatorio")
+    parser.error("--real-percentage is required")
 
 if real_pct < 0 or real_pct > 100:
-    parser.error("--real-percentage debe estar en el rango 0..100")
+    parser.error("--real-percentage must be in the range 0..100")
 
 synthetic_pct = 100 - real_pct
 input_real_pct = 100 if real_pct == 0 else real_pct
 
-# real=0   → zero-shot (se genera synthetic100 sin usar ejemplos reales como contexto).
-# real<100 → low-resource (se complementa la fracción real con datos sintéticos).
-# real=100 → full-real (no hay síntesis).
+# real=0   → zero-shot (generates synthetic100 without using real examples as context).
+# real<100 → low-resource (complements the real fraction with synthetic data).
+# real=100 → full-real (no synthesis occurs).
 is_zero_shot = (real_pct == 0)
 
 if input_real_pct == 100:
-    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/individual_sets/train_{dataset}.jsonl")
+    INPUT_PATH = Path(f"./jsonl/individual_sets/train_{dataset}.jsonl")
 else:
-    INPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/real/train_{dataset}_real{input_real_pct}.jsonl")
-OUTPUT_PATH = Path(f"/mnt/beegfs/groups/irgroup/sara_tfg/jsonl/synthetic_data/synthetic/train_{dataset}_synthetic{synthetic_pct}_gemini.jsonl")
+    INPUT_PATH = Path(f"./jsonl/synthetic_data/real/train_{dataset}_real{input_real_pct}.jsonl")
+OUTPUT_PATH = Path(f"./jsonl/synthetic_data/synthetic/train_{dataset}_synthetic{synthetic_pct}_gemini.jsonl")
 MODEL_NAME = "gemini-2.5-flash"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COOKIE_THEFT_IMAGE_PATH = args_slurm.cookie_image
@@ -86,37 +86,37 @@ K_NEIGHBORS = 3
 RANDOM_SEED = 42
 
 def contar_tokens_reales(texto: str) -> int:
-    """Estimación aproximada: ~1 token cada 4 caracteres."""
+    """Approximate estimate: ~1 token every 4 characters."""
     if not texto:
         return 0
     return max(1, math.ceil(len(texto) / 4.0))
 
 
-def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
-    """Carga el JSONL y deja solo las columnas necesarias para el pipeline."""
-    if not ruta.exists():
-        sys.exit(f"No se encontró el archivo de entrada JSONL: {ruta}")
+def cargar_datos(path: Path) -> tuple[pd.DataFrame, dict]:
+    """Loads the JSONL and keeps only the columns needed by the pipeline."""
+    if not path.exists():
+        sys.exit(f"Input JSONL file not found: {path}")
 
     try:
-        df = pd.read_json(ruta, lines=True)
+        df = pd.read_json(path, lines=True)
     except ValueError as e:
-        sys.exit(f"JSONL mal formado o vacío en '{ruta}': {e}")
+        sys.exit(f"Malformed or empty JSONL at '{path}': {e}")
     except Exception as e:
-        sys.exit(f"No se pudo leer el JSONL de entrada '{ruta}': {e}")
+        sys.exit(f"Could not read the input JSONL '{path}': {e}")
 
     if df.empty:
-        sys.exit(f"El archivo de entrada está vacío: {ruta}")
+        sys.exit(f"The input file is empty: {path}")
 
     required_cols = {"Text_interviewer_participant", "Diagnosis", "Age", "MMSE", "Gender"}
     missing_cols = sorted(required_cols - set(df.columns))
     if missing_cols:
-        sys.exit(f"Faltan columnas obligatorias en '{ruta}': {missing_cols}")
+        sys.exit(f"Missing required columns in '{path}': {missing_cols}")
 
     df["Age"] = pd.to_numeric(df.get("Age"), errors="coerce")
     df["MMSE"] = pd.to_numeric(df.get("MMSE"), errors="coerce")
     df["Gender"] = df.get("Gender").astype(str).str.strip().str.upper()
 
-    # Conteo antes del filtrado, para que los objetivos de generación reflejen el dataset completo.
+    # Count before filtering so the generation targets reflect the full dataset.
     conteo_diagnosticos_raw = (
         df.dropna(subset=["Diagnosis"])["Diagnosis"].value_counts().to_dict()
     )
@@ -125,13 +125,13 @@ def cargar_datos(ruta: Path) -> tuple[pd.DataFrame, dict]:
         subset=["Text_interviewer_participant", "Diagnosis", "Age", "MMSE"]
     ).copy()
 
-    print(f"[INFO] Filas raw: {len(df)} | Filas pipeline: {len(df_filtrado)}")
+    print(f"[INFO] Raw rows: {len(df)} | Pipeline rows: {len(df_filtrado)}")
 
     return df_filtrado, conteo_diagnosticos_raw
 
 def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.DataFrame:
     """
-    Imprime stats y devuelve el DataFrame con describe() para las variables numéricas.
+    Prints stats and returns the DataFrame with describe() for the numeric variables.
     """
     stats = df.groupby("Diagnosis")[["Age", "MMSE"]].describe()
     df2 = df.copy()
@@ -150,7 +150,7 @@ def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.Dat
     pct = counts.div(counts.sum(axis=1), axis=0) * 100
 
     print("\n" + "=" * 70)
-    print("ESTADISTICA DESCRIPTIVA")
+    print("DESCRIPTIVE STATISTICS")
     print("=" * 70)
 
     with pd.option_context(
@@ -160,25 +160,25 @@ def analizar_estadisticas(df: pd.DataFrame, conteo_diagnosticos: dict) -> pd.Dat
     ):
         print(stats)
 
-    print(f"\nGender en dataset -> F: {female_pct:.2f}% | M: {male_pct:.2f}%")
+    print(f"\nGender in dataset -> F: {female_pct:.2f}% | M: {male_pct:.2f}%")
 
-    print("\nGender por diagnostico (porcentaje):")
+    print("\nGender by diagnosis (percentage):")
     for diag in pct.index:
         f = pct.loc[diag, "F"]
         m = pct.loc[diag, "M"]
         n = int(counts.loc[diag].sum())
         print(f"  - {diag}: F {f:.2f}% | M {m:.2f}%  (n={n})")
 
-    print("\nObjetivos de Generación (basado en input RAW):")
+    print("\nGeneration targets (based on RAW input):")
     for diag, count in conteo_diagnosticos.items():
-        print(f"  -> Diagnóstico: {diag:<10} | Cantidad a generar: {count}")
+        print(f"  -> Diagnosis: {diag:<10} | Number to generate: {count}")
         
     print("=" * 70 + "\n")
     return stats
 
 def calcular_presupuesto_salida_gemini(df: pd.DataFrame, has_image_input: bool = True) -> int:
-    """Calcula el presupuesto de salida de Gemini a partir del percentil 95 del dataset real."""
-    print("Calculando tokens estimados para todo el dataset (puede tardar unos segundos)...")
+    """Calculates the Gemini output budget from the 95th percentile of the real dataset."""
+    print("Calculating estimated tokens for the full dataset (may take a few seconds)...")
     df["real_tokens"] = df["Text_interviewer_participant"].apply(contar_tokens_reales)
 
     avg_tokens = df["real_tokens"].mean()
@@ -188,21 +188,21 @@ def calcular_presupuesto_salida_gemini(df: pd.DataFrame, has_image_input: bool =
     output_multiplier = 3.0 if has_image_input else 1.5
     output_budget = max(int(math.ceil(p95_tokens * output_multiplier)), 4096)
 
-    print("\n--- PRESUPUESTO DE SALIDA GEMINI ---")
-    print(f"Media tokens/transcripción: {avg_tokens:.0f}")
-    print(f"Máximo tokens/transcripción: {max_tokens:.0f}")
-    print(f"Percentil 95 tokens: {p95_tokens:.0f}")
-    print(f"Presupuesto dinámico de salida: {output_budget}")
+    print("\n--- GEMINI OUTPUT BUDGET ---")
+    print(f"Avg tokens/transcript: {avg_tokens:.0f}")
+    print(f"Max tokens/transcript: {max_tokens:.0f}")
+    print(f"95th percentile tokens: {p95_tokens:.0f}")
+    print(f"Dynamic output budget: {output_budget}")
     print("=" * 70 + "\n")
 
     return output_budget
 
 def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: str, n_samples: int, seed: int,) -> list[dict]:
     """
-    Genera perfiles sintéticos SOLO para un diagnóstico:
-    - Age: bootstrap (sample real del diagnóstico).
-    - MMSE: bootstrap (sample real del diagnóstico).
-    - Gender: por proporción real del diagnóstico.
+    Generates synthetic profiles for a single diagnosis only:
+    - Age: bootstrap (sample from the real diagnosis).
+    - MMSE: bootstrap (sample from the real diagnosis).
+    - Gender: according to the real proportion for that diagnosis.
     """
     rng = np.random.default_rng(seed)
 
@@ -213,14 +213,14 @@ def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: s
     if g.empty:
         return []
 
-    # Age y MMSE: bootstrap sobre valores reales del diagnóstico.
+    # Age and MMSE: bootstrap from real values of the diagnosis.
     age_values = g["Age"].dropna().to_numpy()
     age_min = float(stats.loc[diagnosis_objetivo, ("Age", "min")])
     age_max = float(stats.loc[diagnosis_objetivo, ("Age", "max")])
 
     mmse_values = g["MMSE"].dropna().to_numpy()
 
-    # Género: samplear según proporción real del diagnóstico, no del dataset completo.
+    # Gender: sample according to the real proportion within the diagnosis, not the full dataset.
     gender_probs = g["Gender"].value_counts(normalize=True)
     p_f = float(gender_probs.get("F", 0.0))
     p_m = float(gender_probs.get("M", 0.0))
@@ -251,16 +251,16 @@ def generar_targets(df: pd.DataFrame, stats: pd.DataFrame, diagnosis_objetivo: s
 
 def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.DataFrame | None:
     """
-    Busca vecinos priorizando Diagnosis+Gender y, si no hay suficientes,
-    completa con el resto del mismo Diagnosis (otros géneros).
-    Incluye min-max seguro para evitar division por cero.
+    Finds neighbors prioritizing Diagnosis+Gender, and if not enough are available,
+    completes with the rest of the same Diagnosis (other genders).
+    Includes safe min-max handling to avoid division by zero.
     """
-    # 1) Preferimos vecinos con mismo diagnóstico y mismo género
+    # 1) Prefer neighbors with the same diagnosis and same gender
     df_same = df_real[
         (df_real["Diagnosis"] == target["Diagnosis"]) & (df_real["Gender"] == target["Gender"])
     ].copy()
 
-    # 2) Si no alcanza k, completamos con el mismo diagnóstico (sin importar género)
+    # 2) If not enough are found, complete with the same diagnosis regardless of gender
     if len(df_same) < k:
         df_diag = df_real[df_real["Diagnosis"] == target["Diagnosis"]].copy()
         df_other = df_diag[df_diag["Gender"] != target["Gender"]]
@@ -273,12 +273,12 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
     norm_target = {}
     for col in ["Age", "MMSE"]:
-        # Min-max calculado sobre el dataset real completo, no solo df_filtrado,
-        # para que la escala de normalización sea consistente entre vecindarios.
+        # Min-max computed over the full real dataset, not only df_filtrado,
+        # so the normalization scale remains consistent across neighborhoods.
         c_min = df_real[col].min()
         c_max = df_real[col].max()
 
-        # Si toda la columna es constante, asignamos 0.5 para evitar división por cero.
+        # If the whole column is constant, assign 0.5 to avoid division by zero.
         if c_max == c_min:
             df_filtrado[f"{col}_n"] = 0.5
             norm_target[col] = 0.5
@@ -295,7 +295,7 @@ def buscar_vecinos_knn(target: dict, df_real: pd.DataFrame, k: int = 3) -> pd.Da
 
 def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFrame, max_output_tokens: int, zero_shot: bool = False) -> str | None:
     """Delega la generación en el backend de Gemini."""
-    return generar_dialogo_paciente_prompt(
+    return generate_dialog_pacient_prompt(
         dataset_name=dataset_name,
         target=target,
         vecinos=vecinos,
@@ -309,48 +309,48 @@ def generar_dialogo_paciente(dataset_name: str, target: dict, vecinos: pd.DataFr
     )
 
 def main() -> None:
-    print("Cargando datos...")
+    print("Loading data...")
     if not GEMINI_API_KEY:
         sys.exit(
-            "No se encontró la API key de Gemini. "
-            "Define GEMINI_API_KEY en el entorno o en el archivo .env."
+            "Gemini API key not found. "
+            "Define GEMINI_API_KEY in the environment or in the .env file."
         )
 
     if not INPUT_PATH.exists():
-        sys.exit(f"No se encontró el archivo de entrada JSONL: {INPUT_PATH}")
+        sys.exit(f"Input JSONL file not found: {INPUT_PATH}")
 
-    df_real, conteo_raw = cargar_datos(INPUT_PATH)  # ej: {'Dementia': 204, 'HC': 194, 'MCI': 34}
+    df_real, conteo_raw = cargar_datos(INPUT_PATH)  # example: {'Dementia': 204, 'HC': 194, 'MCI': 34}
 
     prompt_spec = get_prompt_spec(dataset)
     use_cookie_theft_image = prompt_spec.uses_cookie_theft_image
     if use_cookie_theft_image:
         load_cookie_theft_image_inline(COOKIE_THEFT_IMAGE_PATH)
     if is_zero_shot and prompt_spec.zero_shot_user_template is None:
-        sys.exit(f"El dataset '{dataset}' no define plantillas zero-shot en prompt_system.py")
-    print(f"[INFO] PromptSpec activo: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
-    print(f"[INFO] Modalidad Gemini: {'multimodal con imagen Cookie Theft' if use_cookie_theft_image else 'solo texto'}")
-    print(f"[INFO] Modo de generación: {'zero-shot' if is_zero_shot else 'few-shot'}")
+        sys.exit(f"The dataset '{dataset}' does not define zero-shot templates in prompt_system.py")
+    print(f"[INFO] Active PromptSpec: dataset='{dataset}' -> spec='{next((k for k, v in PROMPT_REGISTRY.items() if v == prompt_spec), 'default')}'")
+    print(f"[INFO] Gemini mode: {'multimodal with Cookie Theft image' if use_cookie_theft_image else 'text only'}")
+    print(f"[INFO] Generation mode: {'zero-shot' if is_zero_shot else 'few-shot'}")
     
     if real_pct == 0:
-        print("\n[ZERO-SHOT MODE] 0% real. No se usan datos reales como contexto de prompting.")
+        print("\n[ZERO-SHOT MODE] 0% real. Real data is not used as prompting context.")
         for diag, count_real in conteo_raw.items():
             muestras_a_generar = count_real
             conteo_raw[diag] = muestras_a_generar
             print(
-                f"{diag} tiene {count_real} reales de referencia. "
-                f"Generando {muestras_a_generar} sintéticas para synthetic100."
+                f"{diag} has {count_real} real reference samples. "
+                f"Generating {muestras_a_generar} synthetic samples for synthetic100."
             )
     elif real_pct < 100:
-        print(f"\n[LOW-RESOURCE MODE] real{real_pct}. Se generará synthetic{synthetic_pct} por clase.")
+        print(f"\n[LOW-RESOURCE MODE] real{real_pct}. synthetic{synthetic_pct} will be generated per class.")
         for diag, count_real in conteo_raw.items():
             muestras_a_generar = int(count_real * (synthetic_pct / real_pct))
             conteo_raw[diag] = muestras_a_generar
             print(
-                f"real{real_pct}. {diag} tiene {count_real} reales. "
-                f"Generando synthetic{synthetic_pct}: {muestras_a_generar} sintéticas."
+                f"real{real_pct}. {diag} has {count_real} real samples. "
+                f"Generating synthetic{synthetic_pct}: {muestras_a_generar} synthetic samples."
             )
     else:
-        print("\n[FULL-REAL MODE] real100. No se generan datos sintéticos.")
+        print("\n[FULL-REAL MODE] real100. No synthetic data is generated.")
         return
     stats = analizar_estadisticas(df_real, conteo_raw)
     output_budget = calcular_presupuesto_salida_gemini(
@@ -366,18 +366,18 @@ def main() -> None:
     for diag_objetivo, n_objetivo in conteo_raw.items():
         
         if n_objetivo <= 0:
-            print(f"\n>>> SALTANDO DIAGNÓSTICO: {diag_objetivo} | Ya tiene el máximo de muestras.")
+            print(f"\n>>> SKIPPING DIAGNOSIS: {diag_objetivo} | It already has the maximum number of samples.")
             continue
         
-        print(f"\n>>> PROCESANDO DIAGNÓSTICO: {diag_objetivo} | META: {n_objetivo} muestras")
+        print(f"\n>>> PROCESSING DIAGNOSIS: {diag_objetivo} | TARGET: {n_objetivo} samples")
         samples_needed = n_objetivo
 
-        # Varía la seed en cada reintento para evitar generar exactamente los mismos targets.
+        # Varies the seed on each retry to avoid generating exactly the same targets.
         attempt_counter = 0
 
         while samples_needed > 0:
 
-            print(f"Generando batch para {samples_needed} muestras faltantes...")
+            print(f"Generating batch for {samples_needed} missing samples...")
 
             current_seed = RANDOM_SEED + attempt_counter + samples_needed
             targets = generar_targets(df_real, stats, diagnosis_objetivo=diag_objetivo, 
@@ -394,7 +394,7 @@ def main() -> None:
 
                     if vecinos is None or vecinos.empty:
                         batch_bad += 1
-                        print(f"Descartado (sin vecinos): {target}")
+                        print(f"Discarded (no neighbors): {target}")
                         continue
 
                 generated_text = generar_dialogo_paciente(
@@ -409,7 +409,7 @@ def main() -> None:
 
                 if not validate_generated_text(generated_text, prompt_spec):
                     batch_bad += 1
-                    print(f"Descartado (texto inválido para dataset='{dataset}'): {target}")
+                    print(f"Discarded (invalid text for dataset='{dataset}'): {target}")
                     continue
 
                 neighbors_meta = (
@@ -428,27 +428,27 @@ def main() -> None:
 
                 if SAVE:
                     writer.write(json.dumps(sample, ensure_ascii=False) + "\n")
-                    writer.flush()  # Escritura inmediata: si el job muere, no se pierden muestras ya válidas.
+                    writer.flush()  # Immediate write: if the job dies, valid samples already written are not lost.
                 else:
                     print(json.dumps(sample, ensure_ascii=False)[:400] + "...")
 
                 batch_ok += 1
 
-            print(f"Batch finalizado. Guardadas: {batch_ok} | Descartadas: {batch_bad}")
+            print(f"Batch finished. Saved: {batch_ok} | Discarded: {batch_bad}")
             
-            # Solo reintentamos las muestras que fallaron la validación.
+            # We retry only the samples that failed validation.
             samples_needed = batch_bad
             attempt_counter += 1
 
-            # Límite de seguridad: evita bucles infinitos si el modelo sigue fallando.
+            # Safety limit: prevents infinite loops if the model keeps failing.
             if attempt_counter > 10:
-                print(f"ABORTANDO {diag_objetivo}: Demasiados intentos fallidos ({attempt_counter}).")
+                print(f"ABORTING {diag_objetivo}: too many failed attempts ({attempt_counter}).")
                 break
 
     if writer is not None:
         writer.close()
         
-    print("Proceso finalizado.") 
+    print("Process finished.") 
     
 if __name__ == "__main__":
     if args_slurm.self_check:

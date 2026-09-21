@@ -1,9 +1,9 @@
 """
-Backend Gemini para la generación de transcripciones sintéticas.
+Gemini backend for synthetic transcription generation.
 
-Gestiona la carga de la imagen Cookie Theft (base64 inline), la construcción de
-GenerateContentConfig a partir de las opciones del PromptSpec, reintentos con
-backoff exponencial y el punto de entrada generar_dialogo_paciente_prompt().
+Handles loading the Cookie Theft image (base64 inline), building a
+GenerateContentConfig from the PromptSpec options, retries with exponential
+backoff, and the entry point generate_dialog_pacient_prompt().
 """
 
 import io
@@ -22,7 +22,7 @@ from google.genai import types
 from prompt_system import PromptSpec, prepare_prompt_payload
 
 
-# Singleton a nivel de módulo: la imagen se carga y convierte una sola vez por job.
+# Module-level singleton: the image is loaded and converted only once per job.
 COOKIE_THEFT_IMAGE_INLINE: dict[str, str] | None = None
 
 def load_cookie_theft_image_inline(path: Path) -> dict[str, str]:
@@ -32,10 +32,10 @@ def load_cookie_theft_image_inline(path: Path) -> dict[str, str]:
         return COOKIE_THEFT_IMAGE_INLINE
 
     if not path.exists():
-        sys.exit(f"No se ha encontrado la imagen Cookie Theft en: {path}")
+        sys.exit(f"Cookie Theft image not found at: {path}")
 
-    # La API de Gemini solo acepta datos inline en JPEG/PNG; el asset original es un PPM.
-    print(f"[INFO] Convirtiendo {path.name} a JPEG para compatibilidad...")
+    # The Gemini API only accepts inline JPEG/PNG data; the original asset is a PPM.
+    print(f"[INFO] Converting {path.name} to JPEG for compatibility...")
     with PIL.Image.open(path) as img:
         img = img.convert("RGB")
         buffer = io.BytesIO()
@@ -44,7 +44,7 @@ def load_cookie_theft_image_inline(path: Path) -> dict[str, str]:
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     COOKIE_THEFT_IMAGE_INLINE = {"mime_type": "image/jpeg", "data": image_b64}
-    print(f"[INFO] Imagen Cookie Theft cargada y convertida a image/jpeg")
+    print(f"[INFO] Cookie Theft image loaded and converted to image/jpeg")
     return COOKIE_THEFT_IMAGE_INLINE
 
 
@@ -84,8 +84,8 @@ def call_gemini_api(
 ) -> str | None:
     if not api_key:
         sys.exit(
-            "No se encontró la API key de Gemini. "
-            "Define GEMINI_API_KEY en el entorno o en el archivo .env."
+            "Gemini API key not found. "
+            "Define GEMINI_API_KEY in the environment or in the .env file."
         )
 
     client = genai.Client(api_key=api_key)
@@ -119,9 +119,9 @@ def call_gemini_api(
             text = extract_text_from_response(response)
             if text:
                 return text
-            print(f"[WARN] Respuesta Gemini sin texto útil. Intento {attempt}/{max_retries}.")
+            print(f"[WARN] Gemini response without useful text. Attempt {attempt}/{max_retries}.")
         except Exception as e:
-            print(f"[WARN] Error Gemini intento {attempt}/{max_retries}: {e}")
+            print(f"[WARN] Gemini error on attempt {attempt}/{max_retries}: {e}")
 
         if attempt < max_retries:
             time.sleep(2 ** attempt)
@@ -135,7 +135,7 @@ def _estimate_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
 
 
-def generar_dialogo_paciente_prompt(
+def generate_dialog_pacient_prompt(
     *,
     dataset_name: str,
     target: dict,
