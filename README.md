@@ -25,15 +25,16 @@ This paper restricts the study to **English and Spanish**, incorporating Transfo
 
 ## Datasets
 
-| Dataset | Idioma | Tarea | Clases |
-|---|---|---|---|
-| Pitt (DementiaBank) | Inglés | Cookie Theft | HC, MCI, Dementia |
-| Delaware | Inglés | Varias | HC, MCI, Dementia |
-| Lu | Inglés | Varias | HC, Dementia |
-| Taukadial | Inglés | Picture description | HC, Dementia |
-| VAS | Inglés | Varias | HC, MCI |
-| WLS | Inglés | Varias | HC, Dementia |
-| Ivanova | Español | Lectura (El Quijote) | HC, MCI, Dementia |
+| Dataset             | Language | Task                  | Classes           |
+| ------------------- | -------- | --------------------- | ----------------- |
+| Pitt (DementiaBank) | English  | Cookie Theft          | HC, MCI, Dementia |
+| Delaware            | English  | Various               | HC, MCI, Dementia |
+| Lu                  | English  | Various               | HC, Dementia      |
+| Taukadial           | English  | Picture description   | HC, Dementia      |
+| VAS                 | English  | Various               | HC, MCI           |
+| WLS                 | English  | Various               | HC, Dementia      |
+| Ivanova             | Spanish  | Reading (Don Quixote) | HC, MCI, Dementia |
+
 
 The normalized data follow the `NormalizedDataPoint` schema in JSONL format:
 
