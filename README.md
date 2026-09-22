@@ -120,7 +120,7 @@ experiments/BERT_balanced.py   ← Training with real + synthetic data + cross-d
 
 ---
 
-### Instalación
+### Installation
 
 ```bash
 git clone URL_TO_REPO
