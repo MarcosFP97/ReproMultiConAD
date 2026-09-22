@@ -40,9 +40,10 @@ class NormalizedDataPoint:
 
 
 class Collection(ABC):
-    def __init__(self, path: str, language: str):
+    def __init__(self, path: str, language: str, enricher=None):
         self.path = path
         self.language = language.lower()
+        self.enricher = enricher
 
     @abstractmethod
     def __iter__(self) -> Iterator[RawDataPoint]:

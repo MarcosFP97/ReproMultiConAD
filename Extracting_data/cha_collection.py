@@ -66,6 +66,8 @@ class CHACollection(Collection):
         info["text_interviewer"] = " ".join(info["text_interviewer"])
         info["text_interviewer_participant"] = " ".join(info["text_interviewer_participant"])
 
+        if self.enricher is not None:
+            info = self.enricher.enrich(info)
 
         yield info
     
@@ -228,6 +230,40 @@ class CHACollection(Collection):
             Text_participant = raw_datapoint["text_participant"],
             Text_interviewer=raw_datapoint["text_interviewer"]
         )
+
+
+
+
+def build_enricher(path_to_cha_files):
+    """
+    Build the appropriate metadata enricher based on the dataset name in the path.
+    """
+    if "WLS" in path_to_cha_files:
+        from metadata_integration.Loaders.WLS_loader import WLSLoader
+        from metadata_integration.Enrichers.WLS_enricher import WLSEnricher
+
+        loader = WLSLoader()
+        metadata = loader.load_metadata()
+        return WLSEnricher(metadata)
+    
+    elif "VAS" in path_to_cha_files:
+        from metadata_integration.Loaders.VAS_loader import VASLoader
+        from metadata_integration.Enrichers.VAS_enricher import VASEnricher
+
+        loader = VASLoader()
+        metadata = loader.load_metadata()
+        return VASEnricher(metadata)
+    
+    elif "Ivanova" in path_to_cha_files:
+        from metadata_integration.Loaders.Ivanova_loader import IvanovaLoader
+        from metadata_integration.Enrichers.Ivanova_enricher import IvanovaEnricher
+
+        loader = IvanovaLoader()
+        metadata = loader.load_metadata()
+        return IvanovaEnricher(metadata)
+
+    else:
+        return None
     
   
 DEFAULT_OUTPUT_DIRECTORY = "./jsonl/results_cha_collection"
@@ -239,7 +275,8 @@ def write_collection(
     output_directory: str,
     output_name: str | None = None,
 ) -> str:
-    collection = CHACollection(path_to_cha_files, language=language)
+    enricher = build_enricher(path_to_cha_files)
+    collection = CHACollection(path_to_cha_files, language=language, enricher=enricher)
 
     os.makedirs(output_directory, exist_ok=True)
     dataset_name = os.path.basename(os.path.normpath(path_to_cha_files))
@@ -251,7 +288,12 @@ def write_collection(
             normalized_dict = asdict(normalized_datapoint)
             json.dump(normalized_dict, outfile, ensure_ascii=False)
             outfile.write("\n")
-
+    if enricher is not None:
+        summary = enricher.summary()
+        print("\nMetadata enrichment summary:")
+        print(f"  Total .cha files processed: {summary['total_files']}")
+        print(f"  Files enriched with metadata: {summary['matched_metadata']}")
+        print(f"  Files without metadata: {summary['missing_metadata']}")
     print(f"JSONL saved to: {output_file_path}")
     return output_file_path
 

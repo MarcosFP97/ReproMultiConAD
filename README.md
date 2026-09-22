@@ -71,6 +71,7 @@ ReproMultiConAD/
 ├── experiments/               # Classifiers: TF-IDF, E5, BERT
 ├── extracting_data/           # Parsing and normalization of CHAT files
 ├── preprocessing_text/        # Text cleaning and conversion of CHAT markers
+├── metadata_integration/      # Includes demographic data later used for in-context example selection
 ├── scripts/
 │   ├── datasets_creation/     # Parsing, cleaning, and JSONL creation
 ├── environment.yml            # Conda environment dependencies

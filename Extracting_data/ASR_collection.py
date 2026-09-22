@@ -57,6 +57,16 @@ class ASRCollection(Collection):
                     "text_interviewer_participant": item.get("transcription", []),
                 }
 
+                # --- ENRICHER TAUKADIAL ---
+                if file_id in self.metadata:
+                    meta = self.metadata[file_id]
+
+                    info["age"] = meta.get("Age", "Unknown")
+                    info["gender"] = meta.get("Gender", "Unknown")
+                    info["MMSE"] = meta.get("MMSE", "Unknown")
+                    info["Diagnosis"] = meta.get("Diagnosis", "Unknown")
+
+
                 yield info
 
 
