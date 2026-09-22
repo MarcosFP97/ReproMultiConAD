@@ -110,7 +110,7 @@ experiments/BERT_balanced.py   ← Training with real + synthetic data + cross-d
 |---|---|---|
 | 1 | Baselines TF-IDF (SVM, RF, NB, DT, LR) | `experiments/TF_IDF_classifier.py` |
 | 2 | Dense embeddings E5                    | `experiments/e5_larg_classifier.py` |
-| 3 | TF-IDF por dataset individual (balanceado/no balanceado) | `experiments/TF_IDF_single_classifier.py` |
+| 3 | TF-IDF for each individual collection | `experiments/TF_IDF_single_classifier.py` |
 | 4 | BERT fine-tuning | `experiments/BERT_classification.py` |
 | 5 | BERT with CHAT tokens (`[PAUSE]`, `[REP]`, `[REF]`) | `experiments/BERT_tokenizer.py` |
 | 6 | BERT cross-dataset and synthetic | `experiments/BERT_beyond.py` |
